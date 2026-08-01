@@ -3,38 +3,39 @@
 import Image from "next/image";
 import Link from "next/link";
 
+// Shop by Occasion cards → link to collections page with subcategory pre-filtered via query param
+// or to specific collection pages that make the most sense
 const occasions = [
   {
     id: "gold-wedding",
     label: "Gold Wedding",
     image: "/home/sh1.png",
-    href: "/occasions/gold-wedding"
+    href: "/gold",
   },
   {
     id: "gold-traditional",
     label: "Gold Traditional",
     image: "/home/sh2.png",
-    href: "/occasions/gold-traditional"
+    href: "/gold",
   },
   {
     id: "gold-rajasthani",
     label: "Gold Rajasthani Collection",
     image: "/home/sh3.png",
-    href: "/occasions/gold-rajasthani-collection"
+    href: "/gold",
   },
   {
     id: "rose-gold",
     label: "Rose Gold Collection",
     image: "/home/sh4.png",
-    href: "/occasions/rose-gold-collection",
-   
+    href: "/diamond",
   },
   {
     id: "diamond-wedding",
     label: "Diamond Wedding Collection",
     image: "/home/sh5.png",
-    href: "/occasions/diamond-wedding-collection"
-  }
+    href: "/diamond",
+  },
 ];
 
 export default function ShopByOccasion() {

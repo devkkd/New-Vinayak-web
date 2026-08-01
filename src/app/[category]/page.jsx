@@ -1,247 +1,585 @@
 "use client";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import {
-  subCategoriesByCategory,
-  collectionSidebar,
-  getProductsByCategory,
   getCategory,
 } from "@/lib/data";
+import {
+  listProductsApi,
+  listCategoriesGroupedApi,
+} from "@/lib/adminApi";
 import ContactCTA from "../components/ContactCTA";
 import VisitOurStore from "../components/Visitourstore";
 import ImageStrip from "../components/Imagestrip";
 
+// ─── helpers ────────────────────────────────────────────────
+function buildParams(collection, category, subcategory) {
+  const p = {};
+  if (collection) p.collection = collection;
+  if (category) p.category = category;
+  if (subcategory) p.subcategory = subcategory;
+  return p;
+}
+function cacheKey(params) {
+  return JSON.stringify(params);
+}
+
 export default function CategoryPage() {
   const { category } = useParams();
   const meta = getCategory(category);
-  const allProducts = getProductsByCategory(category);
-  const subCats = subCategoriesByCategory[category] || [];
+  const isCollections = category === "collections";
+  // collection name for API (e.g. "Gold", "Silver") — null for collections page
+  const collectionName = meta?.collectionName || null;
 
-  const [activeFilter, setActiveFilter] = useState(
-    category === "collections" ? "All Jewellery" : "All"
-  );
- const [showPopup, setShowPopup] = useState(false);
-const [enquiryCart, setEnquiryCart] = useState([]);
-const [selectedProduct, setSelectedProduct] = useState(null);
+  // ─── non-collections: dynamic subcategory filter ──────────
+  const [activeFilter, setActiveFilter] = useState("All");
 
-useEffect(() => {
-  const cart =
-    JSON.parse(localStorage.getItem("enquiryCart")) || [];
+  // ─── collections: dynamic 3-level filter state ────────────
+  const [activeCollection, setActiveCollection] = useState(null);
+  const [activeCategory, setActiveCategory] = useState(null);
+  const [activeSubcategory, setActiveSubcategory] = useState(null);
 
-  setEnquiryCart(cart);
-}, []);
+  // ─── collections: data + UI state ─────────────────────────
+  const [groupedCategories, setGroupedCategories] = useState({});
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(isCollections);
+  const [error, setError] = useState(null); // null | "products" | "both"
 
-const openPopup = (product) => {
-  setSelectedProduct(product);
-  setShowPopup(true);
-};
+  // ─── collections: session cache ───────────────────────────
+  const fetchCache = useRef({});
 
-const closePopup = () => {
-  setShowPopup(false);
-  setSelectedProduct(null);
-};
-  const filtered = useMemo(() => {
-    if (activeFilter === "All" || activeFilter === "All Jewellery") return allProducts;
-    if (category === "collections") {
-      return allProducts.filter(
-        (p) =>
-          p.category === activeFilter.toLowerCase() ||
-          p.collectionTag === activeFilter
-      );
+  // ─── non-collections: data + UI state ───────────────────
+  const [staticProducts, setStaticProducts] = useState([]);
+  const [nonColLoading, setNonColLoading] = useState(!isCollections && !!collectionName);
+  const [nonColError, setNonColError] = useState(null);
+  // Subcategory pills derived from fetched products
+  const [dynamicSubCats, setDynamicSubCats] = useState([]);
+
+  // ─── non-collections: fetch from API ─────────────────────
+  useEffect(() => {
+    if (isCollections) return;
+    if (!collectionName) {
+      // birth-stones or unknown — no API fetch, show empty
+      setStaticProducts([]);
+      setNonColLoading(false);
+      return;
     }
-    return allProducts.filter((p) => p.subCategory === activeFilter);
-  }, [activeFilter, allProducts, category]);
+    let cancelled = false;
+    async function fetchNonCollection() {
+      setNonColLoading(true);
+      setNonColError(null);
+      try {
+        const res = await listProductsApi({ collection: collectionName });
+        if (cancelled) return;
+        if (res?.success) {
+          const prods = res.data || [];
+          setStaticProducts(prods);
+          // Derive unique subcategories from actual products
+          const subCatSet = new Set();
+          prods.forEach((p) => { if (p.subcategory) subCatSet.add(p.subcategory); });
+          setDynamicSubCats([...subCatSet]);
+        } else {
+          setNonColError("failed");
+        }
+      } catch {
+        if (!cancelled) setNonColError("failed");
+      } finally {
+        if (!cancelled) setNonColLoading(false);
+      }
+    }
+    fetchNonCollection();
+    return () => { cancelled = true; };
+  }, [isCollections, collectionName]);
+  const [showPopup, setShowPopup] = useState(false);
+  const [enquiryCart, setEnquiryCart] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
+  // load enquiry cart from localStorage
+  useEffect(() => {
+    setEnquiryCart(JSON.parse(localStorage.getItem("enquiryCart")) || []);
+  }, []);
+
+  // ─── collections: parallel initial fetch ──────────────────
+  useEffect(() => {
+    if (!isCollections) return;
+
+    let cancelled = false;
+    async function initialFetch() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [catRes, prodRes] = await Promise.all([
+          listCategoriesGroupedApi(),
+          listProductsApi({}),
+        ]);
+        if (cancelled) return;
+
+        if (catRes?.success) setGroupedCategories(catRes.data || {});
+        if (prodRes?.success) {
+          const prods = prodRes.data || [];
+          setProducts(prods);
+          fetchCache.current[cacheKey({})] = prods;
+        } else {
+          setError("products");
+        }
+      } catch {
+        if (!cancelled) setError("both");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    initialFetch();
+    return () => { cancelled = true; };
+  }, [isCollections]);
+
+  // ─── collections: fetch on filter change ──────────────────
+  async function fetchProducts(params) {
+    const key = cacheKey(buildParams(params.collection, params.category, params.subcategory));
+    if (fetchCache.current[key]) {
+      setProducts(fetchCache.current[key]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await listProductsApi(buildParams(params.collection, params.category, params.subcategory));
+      if (res?.success) {
+        fetchCache.current[key] = res.data || [];
+        setProducts(res.data || []);
+      } else {
+        setError("products");
+      }
+    } catch {
+      setError("products");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ─── filter handlers ──────────────────────────────────────
+  function handleCollectionSelect(col) {
+    setActiveCollection(col);
+    setActiveCategory(null);
+    setActiveSubcategory(null);
+    fetchProducts({ collection: col });
+  }
+
+  function handleCategorySelect(cat) {
+    setActiveCategory(cat);
+    setActiveSubcategory(null);
+    fetchProducts({ collection: activeCollection, category: cat });
+  }
+
+  function handleSubcategorySelect(sub) {
+    const next = sub === activeSubcategory ? null : sub;
+    setActiveSubcategory(next);
+    fetchProducts({ collection: activeCollection, category: activeCategory, subcategory: next });
+  }
+
+  // ─── derived filter data ──────────────────────────────────
+  const collectionNames = useMemo(() => Object.keys(groupedCategories), [groupedCategories]);
+
+  const categoriesForActive = useMemo(() => {
+    if (!activeCollection) return Object.values(groupedCategories).flat();
+    return groupedCategories[activeCollection] || [];
+  }, [groupedCategories, activeCollection]);
+
+  const subcategoriesForActive = useMemo(() => {
+    if (!activeCategory) return [];
+    const record = categoriesForActive.find((c) => c.category === activeCategory);
+    return record?.subcategories || [];
+  }, [categoriesForActive, activeCategory]);
+
+  // ─── non-collections: filtered products ───────────────────
+  const filteredStatic = useMemo(() => {
+    if (activeFilter === "All") return staticProducts;
+    // API products use `subcategory` field
+    return staticProducts.filter(
+      (p) => (p.subcategory || p.subCategory) === activeFilter
+    );
+  }, [activeFilter, staticProducts]);
+
+  // ─── retry handler ────────────────────────────────────────
+  async function handleRetry() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [catRes, prodRes] = await Promise.all([
+        error === "both" ? listCategoriesGroupedApi() : Promise.resolve({ success: true, data: groupedCategories }),
+        listProductsApi(buildParams(activeCollection, activeCategory, activeSubcategory)),
+      ]);
+      if (catRes?.success) setGroupedCategories(catRes.data || {});
+      if (prodRes?.success) {
+        setProducts(prodRes.data || []);
+      } else {
+        setError("products");
+      }
+    } catch {
+      setError("both");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ─── popup helpers ────────────────────────────────────────
+  const openPopup = (product) => { setSelectedProduct(product); setShowPopup(true); };
+  const closePopup = () => { setShowPopup(false); setSelectedProduct(null); };
 
   if (!meta) return <div className="cat-empty">Page not found.</div>;
 
   const isSidebar = meta.type === "sidebar";
   const isPills = meta.type === "pills" || meta.type === "pills-center";
 
+  // product identity helpers
+  const getId = (p) => p._id || p.id;
+  const getImg = (p) => (p.images?.length > 0 ? p.images[0] : p.image) || "/home/logo.png";
+  const getTitle = (p) => p.productName || p.title || "";
+  const getHref = (p) => `/product/${p.sku || p.slug || p._id}`;
+
+  // ─── product list to render ──────────────────────────────
+  const isLoading = isCollections ? loading : nonColLoading;
+  const hasError = isCollections ? !!error : !!nonColError;
+  const displayProducts = isCollections ? products : filteredStatic;
+
+  // ─── group products by subcategory for header layout ─────
+  // Used on collections page when NO subcategory filter is active
+  const groupedBySubcategory = useMemo(() => {
+    // Show flat grid when: not collections, subcategory filter active, or category selected
+    if (!isCollections || activeSubcategory || activeCategory) return null;
+    if (displayProducts.length === 0) return null;
+
+    const grouped = {};
+    const order = [];
+    displayProducts.forEach((p) => {
+      const key = p.subcategory || p.subCategory || "Uncategorised";
+      if (!grouped[key]) { grouped[key] = []; order.push(key); }
+      grouped[key].push(p);
+    });
+    // Only group if there are multiple distinct subcategories
+    if (order.length <= 1) return null;
+    // Sort: put "Uncategorised" last
+    order.sort((a, b) => {
+      if (a === "Uncategorised") return 1;
+      if (b === "Uncategorised") return -1;
+      return a.localeCompare(b);
+    });
+    return { grouped, order };
+  }, [isCollections, activeSubcategory, activeCategory, displayProducts]);
+
   return (
     <main className="cat-root">
-        <div className="cat-content">
-      {!isSidebar && (
-        <>
-          <h1 className="cat-heading">{meta.heading}</h1>
-          {meta.note && <p className="cat-note">{meta.note}</p>}
-        </>
-      )}
-
-      {isPills && (
-        <div className={`cat-pills ${meta.type === "pills-center" ? "cat-pills-center" : ""}`}>
-          <button
-            className={`cat-pill ${activeFilter === "All" ? "cat-pill-active" : ""}`}
-            onClick={() => setActiveFilter("All")}
-          >
-            All
-          </button>
-          {subCats.map((sc) => (
-            <button
-              key={sc}
-              className={`cat-pill ${activeFilter === sc ? "cat-pill-active" : ""}`}
-              onClick={() => setActiveFilter(sc)}
-            >
-              {sc}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className={`cat-body ${isSidebar ? "cat-body-with-sidebar" : ""}`}>
-        {isSidebar && (
-          <aside className="cat-sidebar">
-            <h2 className="cat-sidebar-title">
-              Collections <span className="cat-sidebar-sub">— curated pieces</span>
-            </h2>
-            <div className="cat-sidebar-list">
-              {collectionSidebar.map((item) => (
-                <button
-                  key={item}
-                  className={`cat-sidebar-item ${activeFilter === item ? "cat-sidebar-item-active" : ""}`}
-                  onClick={() => setActiveFilter(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          </aside>
+      <div className="cat-content">
+        {!isSidebar && (
+          <>
+            <h1 className="cat-heading">{meta.heading}</h1>
+            {meta.note && <p className="cat-note">{meta.note}</p>}
+          </>
         )}
 
-        <section className="cat-grid-wrap">
+        {/* ── Non-collections: subcategory pills ── */}
+        {isPills && (
+          <div className={`cat-pills ${meta.type === "pills-center" ? "cat-pills-center" : ""}`}>
+            <button
+              className={`cat-pill ${activeFilter === "All" ? "cat-pill-active" : ""}`}
+              onClick={() => setActiveFilter("All")}
+            >
+              All
+            </button>
+            {dynamicSubCats.map((sc) => (
+              <button
+                key={sc}
+                className={`cat-pill ${activeFilter === sc ? "cat-pill-active" : ""}`}
+                onClick={() => setActiveFilter(sc)}
+              >
+                {sc}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className={`cat-body ${isSidebar ? "cat-body-with-sidebar" : ""}`}>
+          {/* ── Collections: dynamic 3-level sidebar ── */}
           {isSidebar && (
-            <div className="cat-grid-head">
-              <span className="cat-grid-count">{filtered.length} Products</span>
-            </div>
+            <aside className="cat-sidebar">
+              <h2 className="cat-sidebar-title">
+                Collections <span className="cat-sidebar-sub">— curated pieces</span>
+              </h2>
+
+              {/* Level 1: Collections */}
+              <div className="cat-sidebar-list">
+                <button
+                  className={`cat-sidebar-item ${activeCollection === null ? "cat-sidebar-item-active" : ""}`}
+                  onClick={() => handleCollectionSelect(null)}
+                >
+                  All Jewellery
+                </button>
+                {collectionNames.map((col) => (
+                  <button
+                    key={col}
+                    className={`cat-sidebar-item ${activeCollection === col ? "cat-sidebar-item-active" : ""}`}
+                    onClick={() => handleCollectionSelect(col)}
+                  >
+                    {col}
+                  </button>
+                ))}
+              </div>
+
+              {/* Level 2: Categories — header style */}
+              {/* MOVED to horizontal tabs above the product grid */}
+
+              {/* Level 3: Subcategory pills — MOVED to above product grid */}
+            </aside>
           )}
 
-          {filtered.length === 0 ? (
-            <p className="cat-no-products">No products found.</p>
-          ) : (
-            <div className="cat-grid">
-              {filtered.map((p) => (
-               <div className="cat-card" key={p.id}>
+          {/* ── Product grid ── */}
+          <section className="cat-grid-wrap">
+            {/* ── Horizontal Category tabs (collections page only, when a collection is selected) ── */}
+            {isSidebar && activeCollection !== null && categoriesForActive.length > 0 && (
+              <div className="cat-htabs-wrap">
+                <div className="cat-htabs">
+                  <button
+                    className={`cat-htab ${activeCategory === null ? "cat-htab-active" : ""}`}
+                    onClick={() => handleCategorySelect(null)}
+                  >
+                    All
+                  </button>
+                  {categoriesForActive.map((c) => (
+                    <button
+                      key={c._id}
+                      className={`cat-htab ${activeCategory === c.category ? "cat-htab-active" : ""}`}
+                      onClick={() => handleCategorySelect(c.category)}
+                    >
+                      {c.category}
+                    </button>
+                  ))}
+                </div>
 
-  <Link href={`/product/${p.slug}`}>
+                {/* Subcategory pills — shown when a category is selected */}
+                {subcategoriesForActive.length > 0 && (
+                  <div className="cat-hsubpills">
+                    {subcategoriesForActive.map((sub) => (
+                      <button
+                        key={sub}
+                        className={`cat-hsubpill ${activeSubcategory === sub ? "cat-hsubpill-active" : ""}`}
+                        onClick={() => handleSubcategorySelect(sub)}
+                      >
+                        {sub}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
-    <div className="cat-card-imgwrap">
-      <Image
-        src={p.images[0]}
-        alt={p.title}
-        fill
-        className="cat-card-img"
-      />
-    </div>
+            {isSidebar && (
+              <div className="cat-grid-head">
+                <span className="cat-grid-count">
+                  {isLoading ? "Loading…" : `${displayProducts.length} Products`}
+                </span>
+              </div>
+            )}
 
-    <p className="cat-card-title">
-      {p.title}
-    </p>
+            {/* Non-collections: loading */}
+            {!isCollections && nonColLoading && (
+              <div className="cat-loading">
+                <div className="cat-spinner" />
+                <p>Loading products…</p>
+              </div>
+            )}
 
-  </Link>
+            {/* Non-collections: error */}
+            {!isCollections && !nonColLoading && nonColError && (
+              <div className="cat-error">
+                <p>Could not load products. Please try again.</p>
+                <button className="cat-retry-btn" onClick={() => {
+                  setNonColError(null);
+                  setNonColLoading(true);
+                  listProductsApi({ collection: collectionName }).then((res) => {
+                    if (res?.success) {
+                      setStaticProducts(res.data || []);
+                      const subCatSet = new Set();
+                      (res.data || []).forEach((p) => { if (p.subcategory) subCatSet.add(p.subcategory); });
+                      setDynamicSubCats([...subCatSet]);
+                    } else { setNonColError("failed"); }
+                    setNonColLoading(false);
+                  }).catch(() => { setNonColError("failed"); setNonColLoading(false); });
+                }}>
+                  Try again
+                </button>
+              </div>
+            )}
 
- <button
-  className="cat-card-btn"
-  onClick={() => openPopup(p)}
->
-  {enquiryCart.some(item => item.id === p.id)
-    ? "Added ✓"
-    : "Enquiry Now →"}
-</button>
+            {/* Collections: loading */}
+            {isCollections && loading && (
+              <div className="cat-loading">
+                <div className="cat-spinner" />
+                <p>Loading products…</p>
+              </div>
+            )}
 
-</div>
-              ))}
+            {/* Collections: error */}
+            {isCollections && !loading && error && (
+              <div className="cat-error">
+                <p>Could not load products. Please try again.</p>
+                <button className="cat-retry-btn" onClick={handleRetry}>
+                  Try again
+                </button>
+              </div>
+            )}
+
+            {/* Products / empty */}
+            {!isLoading && !hasError && (
+              <>
+                {displayProducts.length === 0 ? (
+                  <p className="cat-no-products">No products found for this filter.</p>
+                ) : groupedBySubcategory ? (
+                  /* ── Grouped by subcategory with section headers ── */
+                  <div className="cat-sections">
+                    {groupedBySubcategory.order.map((subcat) => (
+                      <div key={subcat} className="cat-section">
+                        {/* Subcategory section header */}
+                        <div className="cat-section-header">
+                          <div className="cat-section-header-left">
+                            <span className="cat-section-eyebrow">Collection</span>
+                            <button
+                              className="cat-section-title-btn"
+                              onClick={() => handleSubcategorySelect(subcat)}
+                            >
+                              {subcat}
+                            </button>
+                          </div>
+                          <div className="cat-section-header-right">
+                            <span className="cat-section-count">
+                              {groupedBySubcategory.grouped[subcat].length} items
+                            </span>
+                            <button
+                              className="cat-section-view-all"
+                              onClick={() => handleSubcategorySelect(subcat)}
+                            >
+                              View All →
+                            </button>
+                          </div>
+                        </div>
+                        {/* Products row for this subcategory */}
+                        <div className="cat-grid">
+                          {groupedBySubcategory.grouped[subcat].map((p) => (
+                            <div className="cat-card" key={getId(p)}>
+                              <Link href={getHref(p)}>
+                                <div className="cat-card-imgwrap">
+                                  <img
+                                    src={getImg(p)}
+                                    alt={getTitle(p)}
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="cat-card-img"
+                                    onError={(e) => { e.currentTarget.src = "/home/logo.png"; }}
+                                  />
+                                </div>
+                              </Link>
+                              <div className="cat-card-body">
+                                <Link href={getHref(p)}>
+                                  <p className="cat-card-title">{getTitle(p)}</p>
+                                </Link>
+                                <button
+                                  className="cat-card-btn"
+                                  onClick={() => openPopup(p)}
+                                >
+                                  {enquiryCart.some((item) => (item._id || item.id) === getId(p))
+                                    ? "Added ✓"
+                                    : "Enquiry Now →"}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  /* ── Flat grid (subcategory filter active or non-collections) ── */
+                  <div className="cat-grid">
+                    {displayProducts.map((p) => (
+                      <div className="cat-card" key={getId(p)}>
+                        <Link href={getHref(p)}>
+                          <div className="cat-card-imgwrap">
+                            <img
+                              src={getImg(p)}
+                              alt={getTitle(p)}
+                              loading="lazy"
+                              decoding="async"
+                              className="cat-card-img"
+                              onError={(e) => { e.currentTarget.src = "/home/logo.png"; }}
+                            />
+                          </div>
+                        </Link>
+                        <div className="cat-card-body">
+                          <Link href={getHref(p)}>
+                            <p className="cat-card-title">{getTitle(p)}</p>
+                          </Link>
+                          <button
+                            className="cat-card-btn"
+                            onClick={() => openPopup(p)}
+                          >
+                            {enquiryCart.some((item) => (item._id || item.id) === getId(p))
+                              ? "Added ✓"
+                              : "Enquiry Now →"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        </div>
+      </div>
+
+      {/* ── Enquiry popup ── */}
+      {showPopup && selectedProduct && (
+        <div className="popup-overlay">
+          <div className="popup">
+            <button className="popup-close" onClick={closePopup}>✕</button>
+            <h2>ADD PRODUCT TO ENQUIRY</h2>
+            <p>You can add multiple products and send a combined enquiry later.</p>
+
+            <div className="popup-product">
+              <img src={getImg(selectedProduct)} alt={getTitle(selectedProduct)} />
+              <div>
+                <h3>{getTitle(selectedProduct)}</h3>
+                <p>Model #{getId(selectedProduct)}</p>
+              </div>
             </div>
-          )}
-        </section>
-      </div>
-      </div>
-     {showPopup && selectedProduct && (
 
-<div className="popup-overlay">
+            <button
+              type="button"
+              className="popup-btn"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const oldCart = JSON.parse(localStorage.getItem("enquiryCart")) || [];
+                const alreadyAdded = oldCart.some(
+                  (item) => (item._id || item.id) === getId(selectedProduct)
+                );
+                if (!alreadyAdded) {
+                  oldCart.push(selectedProduct);
+                  localStorage.setItem("enquiryCart", JSON.stringify(oldCart));
+                  setEnquiryCart([...oldCart]);
+                }
+              }}
+            >
+              {enquiryCart.some((item) => (item._id || item.id) === getId(selectedProduct))
+                ? "Added ✓"
+                : "Add to Enquiry →"}
+            </button>
 
-<div className="popup">
-
-<button
-className="popup-close"
-onClick={closePopup}
->
-✕
-</button>
-
-<h2>
-ADD PRODUCT TO ENQUIRY
-</h2>
-
-<p>
-You can add multiple products and send a combined enquiry later.
-</p>
-
-<div className="popup-product">
-
-<img
-src={selectedProduct.images[0]}
-alt={selectedProduct.title}
-/>
-
-<div>
-
-<h3>
-{selectedProduct.title}
-</h3>
-
-<p>
-Model #{selectedProduct.id}
-</p>
-
-</div>
-
-</div>
-
-<button
-  type="button"
-  className="popup-btn"
-  onClick={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const oldCart =
-      JSON.parse(localStorage.getItem("enquiryCart")) || [];
-
-    const alreadyAdded = oldCart.some(
-      (item) => item.id === selectedProduct.id
-    );
-
-    if (!alreadyAdded) {
-      oldCart.push(selectedProduct);
-
-      localStorage.setItem(
-        "enquiryCart",
-        JSON.stringify(oldCart)
-      );
-
-      setEnquiryCart([...oldCart]);
-    }
-
-    // closePopup();  <-- Is line ko hata do
-  }}
->
- {enquiryCart.some(item => item.id === selectedProduct.id)
-  ? "Added ✓"
-  : "Add to Enquiry →"}
-</button>
-
-<Link href="/enquiry-cart">
-  <button type="button" className="popup-link">
-    View Enquiry Cart
-  </button>
-</Link>
-
-</div>
-
-</div>
-
-)}
+            <Link href="/enquiry-cart">
+              <button type="button" className="popup-link">View Enquiry Cart</button>
+            </Link>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
       .cat-root {
@@ -253,15 +591,16 @@ Model #{selectedProduct.id}
   box-sizing: border-box;
 }
   .cat-content {
-  padding: 72px;
+  padding: 32px 48px 48px;
 }
         .cat-heading {
           font-family: "Cinzel", serif;
           text-align: center;
-          font-size: 40px;
+          font-size: 32px;
           font-weight: 700;
           text-transform: uppercase;
-          margin-bottom: 8px;
+          margin-top: 0;
+          margin-bottom: 6px;
           letter-spacing: 1px;
         }
         .cat-note {
@@ -330,57 +669,384 @@ Model #{selectedProduct.id}
 }
         .cat-grid-head { display: flex; justify-content: flex-end; margin-bottom: 16px; }
         .cat-grid-count { background: #fdeccb; padding: 8px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; }
-        .cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+        .cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+
+        /* ── Product card — matches reference design ── */
         .cat-card {
-  display: flex;
-  flex-direction: column;
-  text-decoration: none;
-  color: inherit;
-  height: 100%;
-}
-       .cat-card-imgwrap {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border-radius: 12px;
-  overflow: hidden;
-  background: #fff;
-  margin-bottom: 14px;
-}
-        .cat-card-img { object-fit: cover; }
-      .cat-card-title {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.45;
+          display: flex;
+          flex-direction: column;
+          background: #ffffff;
+          border-radius: 18px;
+          overflow: hidden;
+          box-shadow: 0 2px 12px rgba(104,31,0,0.07);
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .cat-card:hover {
+          transform: translateY(-3px);
+          box-shadow: 0 8px 28px rgba(104,31,0,0.13);
+        }
 
-  height: 66px;          /* Fixed height */
-  margin-bottom: 18px;
+        /* image area — square ratio so cards stay compact, 8+ visible per screen */
+        .cat-card-imgwrap {
+          width: 100%;
+          aspect-ratio: 4 / 3;
+          overflow: hidden;
+          background: #f8f0e3;
+          flex-shrink: 0;
+        }
+        .cat-card-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          transition: transform 0.38s ease;
+        }
+        .cat-card:hover .cat-card-img { transform: scale(1.03); }
 
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3; /* Maximum 3 lines */
-  -webkit-box-orient: vertical;
-  text-overflow: ellipsis;
-}
+        /* text + button below the image */
+        .cat-card-body {
+          display: flex;
+          flex-direction: column;
+          padding: 10px 12px 12px;
+          gap: 8px;
+          background: #ffffff;
+        }
+        .cat-card-title {
+          font-size: 13px;
+          font-weight: 700;
+          line-height: 1.4;
+          color: #1a1a1a;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          margin: 0;
+        }
         .cat-card-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  margin-top: auto;   /* Same line par button */
-  width: 100%;
-  height: 52px;
-
-  background: #681f00;
-  color: #fff6de;
-
-  font-weight: 600;
-  font-size: 15px;
-
-  border-radius: 999px;
-}
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 40px;
+          background: #5a1a00;
+          color: #ffffff;
+          font-weight: 600;
+          font-size: 13px;
+          letter-spacing: 0.01em;
+          border: none;
+          border-radius: 999px;
+          cursor: pointer;
+          transition: background 0.2s ease;
+          flex-shrink: 0;
+        }
+        .cat-card-btn:hover { background: #3d1000; }
         .cat-no-products { text-align: center; font-size: 18px; padding: 60px 0; }
         .cat-empty { padding: 60px; text-align: center; }
+
+        /* loading */
+        .cat-loading {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 80px 0;
+          gap: 16px;
+          color: rgba(104,31,0,0.6);
+          font-size: 15px;
+        }
+        .cat-spinner {
+          width: 40px; height: 40px;
+          border: 3px solid #fdeccb;
+          border-top-color: #681f00;
+          border-radius: 50%;
+          animation: spin 0.75s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* error */
+        .cat-error {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
+          padding: 60px 0;
+          color: #681f00;
+          font-size: 15px;
+          text-align: center;
+        }
+        .cat-retry-btn {
+          background: #681f00;
+          color: #fff6de;
+          border: none;
+          border-radius: 999px;
+          padding: 12px 28px;
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        /* ── Grouped sections (subcategory headers on collections page) ── */
+        .cat-sections {
+          display: flex;
+          flex-direction: column;
+          gap: 56px;
+        }
+        .cat-section {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        /* Header bar */
+        .cat-section-header {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 16px;
+          padding-bottom: 16px;
+          border-bottom: 1.5px solid rgba(104, 31, 0, 0.18);
+          position: relative;
+        }
+        /* accent left bar */
+        .cat-section-header::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          bottom: -1.5px;
+          width: 60px;
+          height: 3px;
+          background: #681f00;
+          border-radius: 2px;
+        }
+
+        /* Left: eyebrow + title */
+        .cat-section-header-left {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .cat-section-eyebrow {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgba(104, 31, 0, 0.45);
+        }
+        .cat-section-title-btn {
+          font-family: "Cinzel", serif;
+          font-size: 26px;
+          font-weight: 700;
+          color: #681f00;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+          letter-spacing: 0.04em;
+          text-transform: capitalize;
+          line-height: 1.1;
+          transition: color 0.2s ease;
+          text-align: left;
+        }
+        .cat-section-title-btn:hover { color: #3d1000; }
+
+        /* Right: count pill + view-all link */
+        .cat-section-header-right {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-shrink: 0;
+          padding-bottom: 4px;
+        }
+        .cat-section-count {
+          font-size: 11px;
+          font-weight: 700;
+          color: rgba(104, 31, 0, 0.6);
+          background: #fdeccb;
+          padding: 5px 12px;
+          border-radius: 999px;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+        .cat-section-view-all {
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          color: #681f00;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+          letter-spacing: 0.02em;
+          opacity: 0.7;
+          transition: opacity 0.2s ease;
+          white-space: nowrap;
+        }
+        .cat-section-view-all:hover { opacity: 1; text-decoration: underline; text-underline-offset: 3px; }
+
+        /* category/subcategory sections inside sidebar */
+        .cat-sidebar-section {
+          margin-top: 20px;
+        }
+        .cat-sidebar-section-label {
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: rgba(104,31,0,0.5);
+          margin-bottom: 8px;
+        }
+
+        /* ── Horizontal category tabs above product grid ── */
+        .cat-htabs-wrap {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-bottom: 20px;
+          padding-bottom: 16px;
+          border-bottom: 1.5px solid rgba(104, 31, 0, 0.12);
+        }
+        .cat-htabs {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+        }
+        .cat-htab {
+          font-family: inherit;
+          font-size: 13px;
+          font-weight: 600;
+          color: #681f00;
+          background: #fdeccb;
+          border: none;
+          border-radius: 999px;
+          padding: 8px 18px;
+          cursor: pointer;
+          transition: background 0.18s ease, color 0.18s ease, transform 0.15s ease;
+          white-space: nowrap;
+          letter-spacing: 0.01em;
+        }
+        .cat-htab:hover {
+          background: rgba(104, 31, 0, 0.15);
+          transform: translateY(-1px);
+        }
+        .cat-htab-active {
+          background: #681f00;
+          color: #fff6de;
+        }
+        .cat-htab-active:hover {
+          background: #3d1000;
+        }
+
+        /* Subcategory row below category tabs */
+        .cat-hsubpills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          align-items: center;
+          padding-left: 4px;
+        }
+        .cat-hsubpill {
+          font-family: inherit;
+          font-size: 12px;
+          font-weight: 600;
+          color: rgba(104, 31, 0, 0.75);
+          background: transparent;
+          border: 1.5px solid rgba(104, 31, 0, 0.25);
+          border-radius: 999px;
+          padding: 5px 14px;
+          cursor: pointer;
+          transition: all 0.18s ease;
+          white-space: nowrap;
+        }
+        .cat-hsubpill:hover {
+          border-color: #681f00;
+          color: #681f00;
+          background: rgba(104, 31, 0, 0.06);
+        }
+        .cat-hsubpill-active {
+          background: #681f00;
+          color: #fff6de;
+          border-color: #681f00;
+        }
+
+        /* ── Category header-style list ── */
+        .cat-sidebar-cat-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .cat-sidebar-cat-group {
+          display: flex;
+          flex-direction: column;
+        }
+        .cat-sidebar-cat-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          font-family: inherit;
+          text-align: left;
+          background: transparent;
+          border: none;
+          border-left: 3px solid transparent;
+          padding: 10px 14px 10px 12px;
+          cursor: pointer;
+          border-radius: 0 8px 8px 0;
+          transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+          color: #681f00;
+        }
+        .cat-sidebar-cat-header:hover {
+          background: rgba(104, 31, 0, 0.07);
+          border-left-color: rgba(104, 31, 0, 0.35);
+        }
+        .cat-sidebar-cat-active {
+          background: rgba(104, 31, 0, 0.1);
+          border-left-color: #681f00 !important;
+        }
+        .cat-sidebar-cat-name {
+          font-size: 14px;
+          font-weight: 600;
+          letter-spacing: 0.01em;
+          line-height: 1.3;
+        }
+        .cat-sidebar-cat-active .cat-sidebar-cat-name {
+          font-weight: 700;
+          color: #681f00;
+        }
+        .cat-sidebar-cat-badge {
+          font-size: 10px;
+          font-weight: 700;
+          background: #fdeccb;
+          color: rgba(104, 31, 0, 0.65);
+          padding: 2px 8px;
+          border-radius: 999px;
+          letter-spacing: 0.04em;
+          flex-shrink: 0;
+        }
+        .cat-sidebar-cat-active .cat-sidebar-cat-badge {
+          background: #681f00;
+          color: #fff6de;
+        }
+        .cat-subcategory-pills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .cat-sub-pill {
+          font-family: inherit;
+          border: none;
+          background: #fdeccb;
+          color: #681f00;
+          font-weight: 600;
+          font-size: 13px;
+          padding: 8px 14px;
+          border-radius: 999px;
+          cursor: pointer;
+          transition: background 0.2s, color 0.2s;
+        }
+        .cat-sub-pill:hover { background: rgba(104,31,0,0.15); }
+        .cat-sub-pill-active { background: #681f00; color: #fff6de; }
         .cat-grid-wrap::-webkit-scrollbar {
   width: 6px;
 }
@@ -482,7 +1148,7 @@ cursor:pointer;
 }
        @media (max-width: 900px) {
   .cat-content {
-    padding: 24px 16px;
+    padding: 20px 16px 32px;
   }
 
   .cat-heading {
@@ -548,26 +1214,93 @@ cursor:pointer;
     margin-bottom: 14px;
   }
 
+  .cat-sidebar-section {
+    margin-top: 14px;
+  }
+
+  /* Mobile: category list scrolls horizontally as pills */
+  .cat-sidebar-cat-list {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .cat-sidebar-cat-list::-webkit-scrollbar { display: none; }
+  .cat-sidebar-cat-group { flex: 0 0 auto; }
+  .cat-sidebar-cat-header {
+    border-left: none;
+    border-radius: 999px;
+    background: #fdeccb;
+    padding: 8px 16px;
+    white-space: nowrap;
+  }
+  .cat-sidebar-cat-active {
+    background: #681f00 !important;
+    color: #fff6de !important;
+  }
+  .cat-sidebar-cat-active .cat-sidebar-cat-name { color: #fff6de; }
+  .cat-sidebar-cat-badge { display: none; }
+
+  /* Mobile: horizontal tabs scroll */
+  .cat-htabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .cat-htabs::-webkit-scrollbar { display: none; }
+  .cat-htab { flex: 0 0 auto; font-size: 12px; padding: 7px 14px; }
+  .cat-hsubpills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .cat-hsubpills::-webkit-scrollbar { display: none; }
+  .cat-hsubpill { flex: 0 0 auto; font-size: 11px; padding: 4px 12px; }
+  .cat-subcategory-pills {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 8px;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .cat-subcategory-pills::-webkit-scrollbar { display: none; }
+  .cat-sub-pill {
+    flex: 0 0 auto;
+    font-size: 13px;
+    padding: 8px 14px;
+  }
+
   .cat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
   }
 
   .cat-card-title {
-    font-size: 14px;
-    height: 42px;
-    line-height: 1.4;
-
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    font-size: 13px;
+    -webkit-line-clamp: 3;
   }
 
   .cat-card-btn {
     width: 100%;
-    height: 44px;
-    font-size: 14px;
+    height: 40px;
+    font-size: 13px;
+  }
+
+  .cat-sections {
+    gap: 36px;
+  }
+
+  .cat-section-title-btn {
+    font-size: 18px;
+  }
+
+  .cat-section-view-all {
+    display: none;
   }
 }
        @media (max-width: 520px) {
@@ -580,21 +1313,19 @@ cursor:pointer;
     gap: 12px;
   }
 
-  .cat-card-imgwrap {
-    margin-bottom: 10px;
+  .cat-card-body {
+    padding: 10px 10px 12px;
+    gap: 8px;
   }
 
   .cat-card-title {
-    font-size: 13px;
-    height: 38px;
-    margin-bottom: 10px;
-    -webkit-line-clamp: 2;
+    font-size: 12px;
+    -webkit-line-clamp: 3;
   }
 
   .cat-card-btn {
-    height: 40px;
-    font-size: 13px;
-    border-radius: 999px;
+    height: 38px;
+    font-size: 12px;
   }
 
   .cat-heading {

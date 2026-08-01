@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { API_BASE_URL } from "@/lib/adminApi";
 import VisitOurStore from "../components/Visitourstore";
 import ImageStrip from "../components/Imagestrip";
 
@@ -12,6 +13,8 @@ export default function EnquiryCartPage() {
   const [cart, setCart] = useState([]);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [sending, setSending] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
 
   useEffect(() => {
     const saved = JSON.parse(localStorage.getItem("enquiryCart")) || [];
@@ -19,133 +22,128 @@ export default function EnquiryCartPage() {
   }, []);
 
   const removeProduct = (id) => {
-    const updated = cart.filter((item) => item.id !== id);
-
+    const updated = cart.filter((item) => (item._id || item.id) !== id);
     setCart(updated);
-
-    localStorage.setItem(
-      "enquiryCart",
-      JSON.stringify(updated)
-    );
+    localStorage.setItem("enquiryCart", JSON.stringify(updated));
   };
 
-  const sendEnquiry = () => {
-    if (!name || !phone) {
-      alert("Please fill all details");
+  const sendEnquiry = async () => {
+    if (!name.trim() || !phone.trim()) {
+      alert("Please fill in your name and phone number.");
       return;
     }
 
-    let message =
-      `Name : ${name}\n` +
-      `Phone : ${phone}\n\n`;
+    setSending(true);
+    try {
+      // Submit one enquiry per product to backend
+      const endpoints = [
+        `${API_BASE_URL}/api/enquiries`,
+        `https://vinayak-jewellers-1.onrender.com/api/enquiries`,
+      ];
 
-    message += "Interested Products:\n\n";
+      for (const item of cart) {
+        const productId = item._id || item.id;
+        const productName = item.productName || item.title || "";
+        const productImage =
+          (item.images?.length > 0 ? item.images[0] : item.image) || "";
 
-    cart.forEach((item, index) => {
-      message +=
-        `${index + 1}. ${item.title}\n` +
-        `Model : ${item.id}\n\n`;
-    });
+        const body = { name: name.trim(), phone: phone.trim(), productId, productName, productImage };
 
-    window.open(
-      `https://wa.me/?text=${encodeURIComponent(message)}`,
-      "_blank"
-    );
+        for (const url of [...new Set(endpoints)]) {
+          try {
+            const res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            if (res.ok) break;
+          } catch (_) { /* try next */ }
+        }
+      }
+
+      // Clear cart
+      localStorage.removeItem("enquiryCart");
+      setCart([]);
+      setName("");
+      setPhone("");
+      setSuccessMsg("Your enquiry has been submitted! We'll contact you shortly.");
+    } catch (e) {
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
     <>
       <section className="cart-page">
-
         <div className="cart-container">
+          <h1 className="cart-heading">Your Enquiry Cart</h1>
 
-          <h1 className="cart-heading">
-            Your Enquiry Cart
-          </h1>
+          {/* ── Success message ── */}
+          {successMsg && (
+            <div className="cart-success">
+              <span>✓</span>
+              <p>{successMsg}</p>
+              <button onClick={() => router.push("/collections")}>Browse More →</button>
+            </div>
+          )}
 
-        <div className="cart-products">
+          {!successMsg && (
+            <>
+              <div className="cart-products">
+                {cart.length === 0 ? (
+                  <div className="empty-cart">
+                    <h3>Your enquiry cart is empty</h3>
+                    <p>Please add products to continue.</p>
+                  </div>
+                ) : (
+                  cart.map((item) => {
+                    const id = item._id || item.id;
+                    const title = item.productName || item.title || "Product";
+                    const img = (item.images?.length > 0 ? item.images[0] : item.image) || "/home/logo.png";
+                    const sku = item.sku || id;
+                    return (
+                      <div className="cart-item" key={id}>
+                        <div className="cart-left">
+                          <div className="cart-image">
+                            <Image src={img} alt={title} fill onError={(e) => { e.currentTarget.src = "/home/logo.png"; }} />
+                          </div>
+                          <div className="cart-info">
+                            <h3>{title}</h3>
+                            <p>SKU: {sku}</p>
+                          </div>
+                        </div>
+                        <button className="remove-btn" onClick={() => removeProduct(id)}>✕</button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
 
-  {cart.length === 0 ? (
-
-    <div className="empty-cart">
-      <h3>Your enquiry cart is empty</h3>
-      <p>Please add products to continue.</p>
-    </div>
-
-  ) : (
-
-    cart.map((item) => (
-
-      <div
-        className="cart-item"
-        key={item.id}
-      >
-
-        <div className="cart-left">
-
-          <div className="cart-image">
-            <Image
-              src={item.images[0]}
-              alt={item.title}
-              fill
-            />
-          </div>
-
-          <div className="cart-info">
-            <h3>{item.title}</h3>
-            <p>Model #{item.id}</p>
-          </div>
-
+              {cart.length > 0 && (
+                <div className="contact-box">
+                  <h2>Contact Information</h2>
+                  <input
+                    type="text"
+                    placeholder="Enter your name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Enter your phone number"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                  <button className="send-btn" onClick={sendEnquiry} disabled={sending}>
+                    {sending ? "Sending…" : "Send Enquiry →"}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
-
-        <button
-          className="remove-btn"
-          onClick={() => removeProduct(item.id)}
-        >
-          ✕
-        </button>
-
-      </div>
-
-    ))
-
-  )}
-
-</div>
-
-        {cart.length > 0 && (
-  <div className="contact-box">
-
-    <h2>
-      Contact Information
-    </h2>
-
-    <input
-      type="text"
-      placeholder="Enter your name"
-      value={name}
-      onChange={(e) => setName(e.target.value)}
-    />
-
-    <input
-      type="tel"
-      placeholder="Enter your phone number"
-      value={phone}
-      onChange={(e) => setPhone(e.target.value)}
-    />
-
-    <button
-      className="send-btn"
-      onClick={sendEnquiry}
-    >
-      Send Enquiry →
-    </button>
-
-  </div>
-)}
-
-        </div>
-
       </section>
       <VisitOurStore />
       <ImageStrip />
@@ -322,6 +320,55 @@ export default function EnquiryCartPage() {
 .empty-cart p{
   font-size:16px;
   opacity:.8;
+}
+
+.cart-success{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:16px;
+  padding:60px 20px;
+  border:1px solid #a8e6a0;
+  border-radius:24px;
+  background:#f0faf0;
+  text-align:center;
+}
+
+.cart-success span{
+  width:60px;
+  height:60px;
+  border-radius:50%;
+  background:#2d6a00;
+  color:#fff;
+  font-size:28px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.cart-success p{
+  font-size:17px;
+  font-weight:600;
+  color:#2d6a00;
+  margin:0;
+}
+
+.cart-success button{
+  background:#681f00;
+  color:#fff6de;
+  border:none;
+  border-radius:999px;
+  padding:12px 28px;
+  font-size:15px;
+  font-weight:600;
+  cursor:pointer;
+  font-family:"Mona Sans",sans-serif;
+}
+
+.send-btn:disabled{
+  opacity:0.65;
+  cursor:not-allowed;
+  transform:none;
 }
   @media (max-width:900px){
 

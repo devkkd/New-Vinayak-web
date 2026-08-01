@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { FaMapMarkerAlt, FaPhoneAlt, FaWhatsapp } from "react-icons/fa";
+import { API_BASE_URL } from "@/lib/adminApi";
 import VisitOurStore from "../components/Visitourstore";
 import ImageStrip from "../components/Imagestrip";
 
@@ -32,19 +33,46 @@ const contactItems = [
 
 export default function ContactUs() {
   const [form, setForm] = useState({ name: "", mobile: "" });
-  const [status, setStatus] = useState("idle"); // idle | submitted
+  const [status, setStatus] = useState("idle"); // idle | loading | submitted | error
 
   const handleChange = (field) => (e) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || !form.mobile.trim()) return;
 
-    // TODO: wire this up to your actual lead-capture endpoint / WhatsApp API
-    setStatus("submitted");
-    setForm({ name: "", mobile: "" });
+    setStatus("loading");
+
+    const body = {
+      name: form.name.trim(),
+      phone: form.mobile.trim(),
+    };
+
+    const endpoints = [
+      `${API_BASE_URL}/api/enquiries`,
+      `https://vinayak-jewellers-1.onrender.com/api/enquiries`,
+    ];
+
+    let success = false;
+    for (const url of [...new Set(endpoints)]) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) { success = true; break; }
+      } catch (_) { /* try next */ }
+    }
+
+    if (success) {
+      setStatus("submitted");
+      setForm({ name: "", mobile: "" });
+    } else {
+      setStatus("error");
+    }
   };
 
   return (
@@ -137,12 +165,15 @@ export default function ContactUs() {
                 />
               </div>
 
-              <button type="submit" className="contact-submit-btn">
-                Send <span className="contact-submit-arrow">&rarr;</span>
+              <button type="submit" className="contact-submit-btn" disabled={status === "loading"}>
+                {status === "loading" ? "Sending…" : <>Send <span className="contact-submit-arrow">&rarr;</span></>}
               </button>
 
               {status === "submitted" && (
-                <p className="contact-success-msg">Thank you! Our team will reach out to you shortly.</p>
+                <p className="contact-success-msg">✓ Thank you! Our team will reach out to you shortly.</p>
+              )}
+              {status === "error" && (
+                <p className="contact-error-msg">Something went wrong. Please try again or call us directly.</p>
               )}
             </form>
           </div>
@@ -353,7 +384,22 @@ export default function ContactUs() {
         .contact-success-msg {
           font-size: 14px;
           color: #2F7D4F;
+          font-weight: 600;
           margin: 0;
+        }
+
+        .contact-error-msg {
+          font-size: 14px;
+          color: #c0392b;
+          font-weight: 600;
+          margin: 0;
+        }
+
+        .contact-submit-btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
         }
 
         /* ---------- Decorative floating logo ---------- */

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { API_BASE_URL } from "@/lib/adminApi";
+import { categories as categoryRoutes } from "@/lib/data";
 
 /* ----------------------------- ICONS ----------------------------- */
 
@@ -301,9 +303,73 @@ const NAV_ITEMS = [
 
 export default function Header() {
   const pathname = usePathname();
+  if (pathname?.startsWith("/admin")) return null;
+
+  const router = useRouter();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [cartCount, setCartCount] = useState(0);
+
+  // ── Search state ──
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState({ products: [], categories: [] });
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // Debounced search
+  const handleSearchChange = useCallback((val) => {
+    setSearchQuery(val);
+    clearTimeout(debounceRef.current);
+    if (!val.trim()) { setSearchResults({ products: [], categories: [] }); setSearchOpen(false); return; }
+    debounceRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        // Search products via API
+        const endpoints = [`${API_BASE_URL}/api/products/search?q=${encodeURIComponent(val)}`, `https://vinayak-jewellers-1.onrender.com/api/products/search?q=${encodeURIComponent(val)}`];
+        let products = [];
+        for (const url of [...new Set(endpoints)]) {
+          try {
+            const res = await fetch(url);
+            if (res.ok) { const data = await res.json(); products = data.data || []; break; }
+          } catch (_) {}
+        }
+        // Match categories locally
+        const q = val.toLowerCase();
+        const matchedCats = categoryRoutes.filter(c =>
+          c.label.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q)
+        );
+        setSearchResults({ products: products.slice(0, 6), categories: matchedCats.slice(0, 4) });
+        setSearchOpen(true);
+      } catch (_) {}
+      setSearchLoading(false);
+    }, 300);
+  }, []);
+
+  function handleSearchSubmit(e) {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    setSearchOpen(false);
+    router.push(`/collections?search=${encodeURIComponent(searchQuery.trim())}`);
+  }
+
+  function clearSearch() {
+    setSearchQuery("");
+    setSearchResults({ products: [], categories: [] });
+    setSearchOpen(false);
+  }
 
 useEffect(() => {
   const updateCartCount = () => {
@@ -341,18 +407,67 @@ useEffect(() => {
           />
         </Link>
 
-        <div className="hdr-search">
+        <form className="hdr-search" onSubmit={handleSearchSubmit} ref={searchRef} autoComplete="off">
           <IconSearch className="hdr-search-icon" />
           <input
             type="text"
-            placeholder="Search Gold, Diamond, Silver"
+            placeholder="Search Gold, Diamond, Silver…"
             className="hdr-search-input"
+            value={searchQuery}
+            onChange={e => handleSearchChange(e.target.value)}
+            onFocus={() => searchQuery.trim() && setSearchOpen(true)}
           />
-        </div>
+          {searchQuery && (
+            <button type="button" className="hdr-search-clear" onClick={clearSearch} aria-label="Clear">✕</button>
+          )}
+
+          {/* Dropdown */}
+          {searchOpen && (searchResults.products.length > 0 || searchResults.categories.length > 0) && (
+            <div className="hdr-search-dropdown">
+              {searchLoading && <div className="hdr-sd-loading">Searching…</div>}
+
+              {searchResults.categories.length > 0 && (
+                <div className="hdr-sd-group">
+                  <p className="hdr-sd-label">Categories</p>
+                  {searchResults.categories.map(cat => (
+                    <Link key={cat.slug} href={`/${cat.slug}`} className="hdr-sd-catrow" onClick={clearSearch}>
+                      <span className="hdr-sd-cat-icon">🏷</span>
+                      <span>{cat.heading || cat.label}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {searchResults.products.length > 0 && (
+                <div className="hdr-sd-group">
+                  <p className="hdr-sd-label">Products</p>
+                  {searchResults.products.map(p => {
+                    const img = (p.images?.length > 0 ? p.images[0] : p.image) || "/home/logo.png";
+                    const title = p.productName || p.title || "";
+                    const href = `/product/${p.sku || p._id}`;
+                    return (
+                      <Link key={p._id} href={href} className="hdr-sd-prodrow" onClick={clearSearch}>
+                        <img src={img} alt={title} className="hdr-sd-prod-img" onError={e => { e.currentTarget.src="/home/logo.png"; }} />
+                        <div className="hdr-sd-prod-info">
+                          <span className="hdr-sd-prod-name">{title}</span>
+                          {p.sku && <span className="hdr-sd-prod-sku">SKU: {p.sku}</span>}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+
+              <button type="submit" className="hdr-sd-viewall">
+                View all results for &ldquo;{searchQuery}&rdquo; →
+              </button>
+            </div>
+          )}
+        </form>
 
         <nav className="hdr-toplinks">
           <Link href="/about" className="hdr-link-group">
-            <IconAbout className="hdr-toplink-swirl" />
+            <img src="/about/about.svg" className="w-5"/>
             <span className="hdr-toplink">About Vinayak</span>
           </Link>
 
@@ -378,7 +493,7 @@ useEffect(() => {
 
         <div className="hdr-pills">
           <a
-            href="https://wa.me/"
+            href="https://wa.me/919414156451"
             target="_blank"
             rel="noopener noreferrer"
             className="hdr-pill hdr-pill-whatsapp"
@@ -387,7 +502,7 @@ useEffect(() => {
             <span>WhatsApp</span>
           </a>
           <a
-            href="https://instagram.com/"
+            href="https://www.instagram.com/vinayak_jewellers_jaipur"
             target="_blank"
             rel="noopener noreferrer"
             className="hdr-pill hdr-pill-instagram"
@@ -460,15 +575,20 @@ useEffect(() => {
       </div>
 
       {mobileSearchOpen && (
-        <div className="hdr-mobile-search-row">
+        <form className="hdr-mobile-search-row" onSubmit={handleSearchSubmit} autoComplete="off">
           <IconSearch className="hdr-search-icon" />
           <input
             type="text"
-            placeholder="Search Gold, Diamond, Silver"
+            placeholder="Search Gold, Diamond, Silver…"
             className="hdr-search-input"
+            value={searchQuery}
+            onChange={e => handleSearchChange(e.target.value)}
             autoFocus
           />
-        </div>
+          {searchQuery && (
+            <button type="button" className="hdr-search-clear" onClick={clearSearch}>✕</button>
+          )}
+        </form>
       )}
 
       {/* ---------------- MOBILE DRAWER ---------------- */}
@@ -550,7 +670,7 @@ useEffect(() => {
 
         <div className="hdr-drawer-pills">
           <a
-            href="https://wa.me/"
+            href="https://wa.me/919414156451"
             target="_blank"
             rel="noopener noreferrer"
             className="hdr-pill hdr-pill-whatsapp hdr-pill-full"
@@ -619,20 +739,20 @@ useEffect(() => {
   transition:all .3s ease;
 }
 
-.hdr-logo:hover{
-  opacity:.88;
-  transform:scale(1.02);
-}
+// .hdr-logo:hover{
+//   opacity:.88;
+//   transform:scale(1.02);
+// }
        .hdr-logo-img{
   border-radius:50%;
   object-fit:cover;
   transition:transform .35s ease, filter .35s ease;
 }
 
-.hdr-logo:hover .hdr-logo-img{
-  transform:scale(1.05);
-  filter:brightness(1.05);
-}
+// .hdr-logo:hover .hdr-logo-img{
+//   transform:scale(1.05);
+//   filter:brightness(1.05);
+// }
         .hdr-logo-text { display: flex; flex-direction: column; line-height: 1.25; }
         .hdr-logo-hindi { font-size: 22px; font-weight: 700; color: var(--hdr-dark); }
         .hdr-logo-tag { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; color: var(--hdr-muted); }
@@ -670,6 +790,7 @@ useEffect(() => {
           border-radius: 9px;
           padding: 11px 18px;
           max-width: 620px;
+          position: relative;
         }
         .hdr-search-icon { width: 18px; height: 18px; color: var(--hdr-muted); flex-shrink: 0; }
         .hdr-search-input {
@@ -682,6 +803,114 @@ useEffect(() => {
           font-family: inherit;
         }
         .hdr-search-input::placeholder { color: var(--hdr-muted); }
+        .hdr-search-clear {
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: var(--hdr-muted);
+          font-size: 13px;
+          padding: 0 2px;
+          flex-shrink: 0;
+          line-height: 1;
+        }
+        .hdr-search-clear:hover { color: var(--hdr-dark); }
+
+        /* ── Search Dropdown ── */
+        .hdr-search-dropdown {
+          position: absolute;
+          top: calc(100% + 8px);
+          left: 0;
+          right: 0;
+          background: #fff;
+          border: 1px solid rgba(104,31,0,0.12);
+          border-radius: 14px;
+          box-shadow: 0 12px 40px rgba(104,31,0,0.14);
+          z-index: 500;
+          overflow: hidden;
+          max-height: 480px;
+          overflow-y: auto;
+        }
+        .hdr-sd-loading {
+          padding: 12px 16px;
+          font-size: 12px;
+          color: var(--hdr-muted);
+        }
+        .hdr-sd-group { padding: 8px 0; }
+        .hdr-sd-label {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: rgba(104,31,0,0.45);
+          padding: 4px 16px 6px;
+          margin: 0;
+        }
+        .hdr-sd-catrow {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 9px 16px;
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--hdr-dark);
+          text-decoration: none;
+          transition: background 0.15s;
+        }
+        .hdr-sd-catrow:hover { background: #fff8ee; }
+        .hdr-sd-cat-icon { font-size: 14px; }
+        .hdr-sd-prodrow {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 16px;
+          text-decoration: none;
+          transition: background 0.15s;
+        }
+        .hdr-sd-prodrow:hover { background: #fff8ee; }
+        .hdr-sd-prod-img {
+          width: 44px;
+          height: 44px;
+          border-radius: 8px;
+          object-fit: cover;
+          border: 1px solid rgba(104,31,0,0.1);
+          flex-shrink: 0;
+        }
+        .hdr-sd-prod-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 0;
+        }
+        .hdr-sd-prod-name {
+          font-size: 12px;
+          font-weight: 600;
+          color: #1a1a1a;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 320px;
+        }
+        .hdr-sd-prod-sku {
+          font-size: 10px;
+          color: var(--hdr-muted);
+          font-family: monospace;
+        }
+        .hdr-sd-viewall {
+          display: block;
+          width: 100%;
+          padding: 11px 16px;
+          border: none;
+          border-top: 1px solid rgba(104,31,0,0.08);
+          background: #fffaf0;
+          color: var(--hdr-dark);
+          font-size: 12px;
+          font-weight: 700;
+          font-family: inherit;
+          cursor: pointer;
+          text-align: left;
+          transition: background 0.15s;
+        }
+        .hdr-sd-viewall:hover { background: #fff0d0; }
 
        .hdr-toplinks{
   display:flex;

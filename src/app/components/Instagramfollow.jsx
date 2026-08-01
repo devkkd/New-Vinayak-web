@@ -3,27 +3,59 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { FaInstagram, FaChevronLeft, FaChevronRight } from "react-icons/fa";
+import { listPublicReelsApi } from "@/lib/adminApi";
 
-/* ------------------------------------------------------------------ */
-/* Reusable data array — swap `video` with real reel URLs when ready. */
-/* Leave items as [] (or omit prop) to see the "no data" fallback.    */
-/* ------------------------------------------------------------------ */
-const defaultItems = [
+/* Fallback items when API has no reels yet */
+const fallbackItems = [
   { id: "insta-1", video: "/home/insta1.mp4", poster: "/home/insta1.jpg" },
   { id: "insta-2", video: "/home/insta2.mp4", poster: "/home/insta2.jpg" },
   { id: "insta-3", video: "/home/insta3.mp4", poster: "/home/insta3.jpg" },
   { id: "insta-4", video: "/home/insta4.mp4", poster: "/home/insta4.jpg" },
   { id: "insta-5", video: "/home/insta5.mp4", poster: "/home/insta5.jpg" },
   { id: "insta-6", video: "/home/insta6.mp4", poster: "/home/insta6.jpg" },
-  { id: "insta-7", video: "/home/insta7.mp4", poster: "/home/insta7.jpg" }
+  { id: "insta-7", video: "/home/insta7.mp4", poster: "/home/insta7.jpg" },
 ];
 
 const INSTAGRAM_HANDLE = "vinayak_jewellers_jaipur";
 
-export default function InstagramFollow({ items = defaultItems }) {
+export default function InstagramFollow() {
   const trackRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [erroredMap, setErroredMap] = useState({});
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadReels() {
+      try {
+        const res = await listPublicReelsApi();
+        if (cancelled) return;
+
+        if (res?.success && Array.isArray(res.data) && res.data.length > 0) {
+          setItems(
+            res.data.map((reel) => ({
+              id: reel._id,
+              video: reel.videoUrl,
+              poster: reel.thumbnailUrl || undefined,
+            }))
+          );
+        } else {
+          setItems(fallbackItems);
+        }
+      } catch {
+        if (!cancelled) setItems(fallbackItems);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadReels();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const hasData = Array.isArray(items) && items.length > 0;
 
@@ -101,7 +133,11 @@ export default function InstagramFollow({ items = defaultItems }) {
         <p className="ig-subheading">Discover Our Latest Designs &amp; Beautiful Moments</p>
 
         {/* Carousel or fallback */}
-        {hasData ? (
+        {loading ? (
+          <div className="ig-no-data">
+            <p>Loading reels...</p>
+          </div>
+        ) : hasData ? (
           <div className="ig-carousel">
             <button
               type="button"

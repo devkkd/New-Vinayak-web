@@ -157,7 +157,7 @@ export default function HeroSection() {
           width: 10px;
           height: 10px;
           border-radius: 50%;
-          background: blue ;
+          background:#681f00 ;
           opacity: 0.45;
           cursor: pointer;
           transition: all 0.3s;

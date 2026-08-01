@@ -4,14 +4,14 @@ import Image from "next/image";
 import Link from "next/link";
 
 const categories = [
-  { id: "gold", label: "Gold", image: "/home/vc1.png", href: "/categories/gold" },
-  { id: "silver", label: "Silver", image: "/home/vc2.png", href: "/categories/silver" },
-  { id: "diamond", label: "Diamond", image: "/home/vc3.png", href: "/categories/diamond" },
-  { id: "mens-specials", label: "Men's Specials", image: "/home/vc4.png", href: "/categories/mens-specials" },
-  { id: "coins", label: "Coins", image: "/home/vc5.png", href: "/categories/coins" },
-  { id: "giftings", label: "Giftings", image: "/home/vc6.png", href: "/categories/giftings" },
-  { id: "birth-stone", label: "Birth Stone", image: "/home/vc7.png", href: "/categories/birth-stone" },
-  { id: "collection", label: "Collection", image: "/home/vc8.png", href: "/categories/collection" }
+  { id: "gold",       label: "Gold",             image: "/home/vc1.png", href: "/gold" },
+  { id: "silver",     label: "Silver",           image: "/home/vc2.png", href: "/silver" },
+  { id: "diamond",    label: "Diamond",          image: "/home/vc3.png", href: "/diamond" },
+  { id: "mens",       label: "Men's Specials",   image: "/home/vc4.png", href: "/mens" },
+  { id: "coins",      label: "Coins",            image: "/home/vc5.png", href: "/coins" },
+  { id: "gifting",    label: "Gifting",          image: "/home/vc6.png", href: "/gifting" },
+  { id: "birth-stones", label: "Birth Stones",  image: "/home/vc7.png", href: "/birth-stones" },
+  { id: "collections", label: "All Collections", image: "/home/vc8.png", href: "/collections" },
 ];
 
 export default function VinayakCategories() {

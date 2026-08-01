@@ -6,20 +6,18 @@ import Link from "next/link";
 const collections = [
   {
     id: "gift",
-   
     image: "/home/c1.png",
     title: "Gift Collection",
     desc: "Perfect gifts for every occasion",
-    href: "/collections/gift"
+    href: "/gifting",
   },
   {
-    id: "mangalsutra",
-   
+    id: "wedding",
     image: "/home/c2.png",
-    title: "Mangalsutra Collection",
+    title: "Wedding Collection",
     desc: "Exquisite designs for your special day",
-    href: "/collections/mangalsutra"
-  }
+    href: "/collections",
+  },
 ];
 
 export default function VinayakCollections() {
@@ -46,29 +44,24 @@ export default function VinayakCollections() {
         {/* Cards */}
         <div className="vc-grid">
           {collections.map((item) => (
-            <div className="vc-card" key={item.id}>
+            <Link href={item.href} className="vc-card" key={item.id}>
               <div className="vc-card-image-wrap">
                 <Image
                   src={item.image}
-                  alt={item.tagline}
+                  alt={item.title}
                   fill
                   sizes="(max-width: 768px) 50vw, 680px"
                   className="vc-card-image"
                 />
-                <div className="vc-card-overlay">
-                  <h3 className="vc-card-brand">{item.brand}</h3>
-                  <p className="vc-card-tagline">{item.tagline}</p>
-                </div>
               </div>
-
               <div className="vc-card-footer">
                 <h3 className="vc-card-title">{item.title}</h3>
                 <p className="vc-card-desc">{item.desc}</p>
-                <Link href={item.href} className="vc-explore-link">
+                <span className="vc-explore-link">
                   Explore <span className="vc-explore-arrow">&gt;</span>
-                </Link>
+                </span>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
@@ -144,9 +137,17 @@ export default function VinayakCollections() {
 
         /* ---------- Card ---------- */
         .vc-card {
+          display: block;
+          text-decoration: none;
           background: #FFF;
           border-radius: 20px;
           overflow: hidden;
+          transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .vc-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 12px 28px rgba(97, 49, 30, 0.15);
         }
 
         .vc-card-image-wrap {

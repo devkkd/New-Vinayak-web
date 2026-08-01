@@ -5,15 +5,15 @@
 // ============================================================
 
 export const categories = [
-  { slug: "collections",  label: "Collections",  heading: "Collections",       type: "sidebar" },
-  { slug: "gold",         label: "Gold",          heading: "Gold Jewellery",    type: "pills" },
-  { slug: "diamond",      label: "Diamond",       heading: "Diamond Jewellery", type: "pills",
+  { slug: "collections",  label: "Collections",  heading: "Collections",       type: "sidebar",       collectionName: null },
+  { slug: "gold",         label: "Gold",          heading: "Gold Jewellery",    type: "pills",         collectionName: "Gold" },
+  { slug: "diamond",      label: "Diamond",       heading: "Diamond Jewellery", type: "pills",         collectionName: "Diamond",
     note: "Ladies collections below. Men's diamond jewellery is under Men's or the Mens section." },
-  { slug: "silver",       label: "Silver",        heading: "Silver Jewellery",  type: "pills" },
-  { slug: "mens",         label: "Mens",          heading: "Mens Jewellery",    type: "pills" },
-  { slug: "coins",        label: "Coins",         heading: "Coins Collection",  type: "pills-center" },
-  { slug: "gifting",      label: "Gifting",       heading: "Gifting",           type: "pills" },
-  { slug: "birth-stones", label: "Birth Stones",  heading: "Birth Stones",      type: "none" },
+  { slug: "silver",       label: "Silver",        heading: "Silver Jewellery",  type: "pills",         collectionName: "Silver" },
+  { slug: "mens",         label: "Mens",          heading: "Mens Jewellery",    type: "pills",         collectionName: "Mens" },
+  { slug: "coins",        label: "Coins",         heading: "Coins Collection",  type: "pills-center",  collectionName: "Coins" },
+  { slug: "gifting",      label: "Gifting",       heading: "Gifting",           type: "pills",         collectionName: "Gifting" },
+  { slug: "birth-stones", label: "Birth Stones",  heading: "Birth Stones",      type: "none",          collectionName: "Birth Stones" },
 ];
 
 // subcategory pills shown per category page (like your screenshots)
