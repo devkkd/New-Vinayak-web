@@ -124,6 +124,7 @@ export default function AdminDashboard({ user, onLogout }) {
     sku: "",
     details: "",
     collection: "Gold",
+    extraCollections: [], // additional collections to show this product in
     category: "",
     subcategory: "",
     image: "",
@@ -140,6 +141,7 @@ export default function AdminDashboard({ user, onLogout }) {
     sku: "",
     details: "",
     collection: "Gold",
+    extraCollections: [],
     category: "",
     subcategory: "",
     image: "",
@@ -326,6 +328,7 @@ export default function AdminDashboard({ user, onLogout }) {
       formData.append("sku", newProdForm.sku.trim());
       formData.append("details", newProdForm.details.trim() || "High quality handcrafted jewellery.");
       if (newProdForm.collection) formData.append("collection", newProdForm.collection);
+      formData.append("collections", JSON.stringify(newProdForm.extraCollections || []));
       if (newProdForm.category) formData.append("category", newProdForm.category.trim());
       if (newProdForm.subcategory) formData.append("subcategory", newProdForm.subcategory.trim());
 
@@ -336,6 +339,7 @@ export default function AdminDashboard({ user, onLogout }) {
         sku: newProdForm.sku.trim(),
         details: newProdForm.details.trim() || "High quality handcrafted jewellery.",
         collection: newProdForm.collection,
+        collections: newProdForm.extraCollections || [],
         category: newProdForm.category,
         subcategory: newProdForm.subcategory,
         image: newProdForm.image.trim(),
@@ -353,6 +357,7 @@ export default function AdminDashboard({ user, onLogout }) {
         sku: "",
         details: "",
         collection: "Gold",
+        extraCollections: [],
         category: "",
         subcategory: "",
         image: "",
@@ -366,12 +371,16 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   const handleOpenEditProduct = (prod) => {
+    const primaryCollection = prod.collection || "Gold";
+    // extra collections = all collections minus the primary one
+    const extraColls = (prod.collections || []).filter(c => c !== primaryCollection);
     setEditProdForm({
       id: prod._id || prod.id,
       productName: prod.productName || prod.title || "",
       sku: prod.sku || "",
       details: prod.details || "",
-      collection: prod.collection || "Gold",
+      collection: primaryCollection,
+      extraCollections: extraColls,
       category: prod.category || "",
       subcategory: prod.subcategory || "",
       image: prod.image || prod.images?.[0] || "",
@@ -396,6 +405,7 @@ export default function AdminDashboard({ user, onLogout }) {
       formData.append("sku", editProdForm.sku.trim());
       formData.append("details", editProdForm.details.trim());
       if (editProdForm.collection) formData.append("collection", editProdForm.collection);
+      formData.append("collections", JSON.stringify(editProdForm.extraCollections || []));
       if (editProdForm.category) formData.append("category", editProdForm.category.trim());
       if (editProdForm.subcategory) formData.append("subcategory", editProdForm.subcategory.trim());
 
@@ -406,6 +416,7 @@ export default function AdminDashboard({ user, onLogout }) {
         sku: editProdForm.sku.trim(),
         details: editProdForm.details.trim(),
         collection: editProdForm.collection,
+        collections: editProdForm.extraCollections || [],
         category: editProdForm.category.trim(),
         subcategory: editProdForm.subcategory.trim(),
         image: editProdForm.image.trim(),
@@ -599,15 +610,15 @@ export default function AdminDashboard({ user, onLogout }) {
       >
         <div>
           {/* Brand Logo & Header */}
-          <div className="h-20 px-6 flex items-center justify-between border-b border-slate-200/80">
-            <div className="flex items-center w-full justify-center gap-3">
+          <div className="h-20  px-6 flex items-center justify-between border-b border-slate-200/80">
+            <div className="flex  items-center w-full justify-center gap-3">
               <Image
                 src="/logo1.png"
                 alt="Vinayak Jewellers"
                 width={90}
                 height={40}
                 className="object-contain"
-                style={{ width: "auto", height: "auto" }}
+                style={{ width: "100px", height: "80px" }}
               />
             </div>
             <button
@@ -1205,9 +1216,18 @@ export default function AdminDashboard({ user, onLogout }) {
                               <span>{p.productName || p.title}</span>
                             </td>
                             <td className="py-3.5 px-4">
-                              <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold border border-slate-200">
-                                {p.collection || "Gold"}
-                              </span>
+                              <div className="flex flex-wrap gap-1">
+                                <span className="px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-semibold">
+                                  {p.collection || "Gold"}
+                                </span>
+                                {(p.collections || [])
+                                  .filter(c => c !== p.collection)
+                                  .map(c => (
+                                    <span key={c} className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold border border-slate-200">
+                                      {c}
+                                    </span>
+                                  ))}
+                              </div>
                             </td>
                             <td className="py-3.5 px-4">
                               <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/80 text-[10px] font-semibold">
@@ -2162,6 +2182,40 @@ export default function AdminDashboard({ user, onLogout }) {
                 </div>
               </div>
 
+              {/* Also show in (multi-collection) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Also Show In <span className="text-slate-400 font-normal normal-case">(optional — select additional collections)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {COLLECTIONS_ENUM.filter(c => c !== newProdForm.collection).map((coll) => {
+                    const checked = (newProdForm.extraCollections || []).includes(coll);
+                    return (
+                      <button
+                        key={coll}
+                        type="button"
+                        onClick={() => {
+                          const current = newProdForm.extraCollections || [];
+                          setNewProdForm({
+                            ...newProdForm,
+                            extraCollections: checked
+                              ? current.filter(c => c !== coll)
+                              : [...current, coll],
+                          });
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                          checked
+                            ? "bg-amber-100 border-amber-400 text-amber-800"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+                        }`}
+                      >
+                        {checked ? "✓ " : ""}{coll}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* DUAL IMAGE INPUT: FILE UPLOAD vs URL */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -2382,6 +2436,40 @@ export default function AdminDashboard({ user, onLogout }) {
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* Also show in (multi-collection) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Also Show In <span className="text-slate-400 font-normal normal-case">(optional — select additional collections)</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {COLLECTIONS_ENUM.filter(c => c !== editProdForm.collection).map((coll) => {
+                    const checked = (editProdForm.extraCollections || []).includes(coll);
+                    return (
+                      <button
+                        key={coll}
+                        type="button"
+                        onClick={() => {
+                          const current = editProdForm.extraCollections || [];
+                          setEditProdForm({
+                            ...editProdForm,
+                            extraCollections: checked
+                              ? current.filter(c => c !== coll)
+                              : [...current, coll],
+                          });
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                          checked
+                            ? "bg-amber-100 border-amber-400 text-amber-800"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:border-amber-300 hover:bg-amber-50"
+                        }`}
+                      >
+                        {checked ? "✓ " : ""}{coll}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

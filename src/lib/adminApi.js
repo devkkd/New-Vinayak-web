@@ -1,4 +1,4 @@
-// API Base URL - Tries local backend first, falls back to process.env.NEXT_PUBLIC_API_URL or production API URL
+// API Base URL — single source, no fallback loop that causes 30s waits
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   (typeof window !== "undefined" && window.location.hostname === "localhost"
@@ -6,6 +6,36 @@ export const API_BASE_URL =
     : "https://vinayak-jewellers-1.onrender.com");
 
 export const PROD_API_URL = "https://vinayak-jewellers-1.onrender.com";
+
+// Fast fetch helper — single URL, 8s timeout, no silent fallback loop
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timer);
+    return res;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
+// Smart API call — uses correct URL based on environment, with 8s timeout
+async function apiCall(endpoint, options = {}) {
+  const base = API_BASE_URL;
+  const url = endpoint.startsWith("http") ? endpoint : `${base}${endpoint}`;
+  try {
+    return await fetchWithTimeout(url, options, 8000);
+  } catch (_) {
+    // Only fallback to prod if we were on localhost and it failed
+    if (base !== PROD_API_URL) {
+      const fallbackUrl = endpoint.startsWith("http") ? endpoint : `${PROD_API_URL}${endpoint}`;
+      return await fetchWithTimeout(fallbackUrl, options, 10000);
+    }
+    throw _;
+  }
+}
 
 export const TOKEN_KEY = "admin_token";
 export const USER_KEY = "admin_user";
@@ -41,36 +71,21 @@ export function removeAdminAuth() {
  * Log in admin via API
  */
 export async function loginAdmin(email, password) {
-  const endpoints = [
-    `${API_BASE_URL}/api/auth/login`,
-    `http://localhost:5000/api/auth/login`,
-    `${PROD_API_URL}/api/auth/login`,
-  ];
-
-  let lastError = "Login failed";
-
-  for (const url of Array.from(new Set(endpoints))) {
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success && data.token) {
-        setAdminAuth(data.token, data.user || { email });
-        return { success: true, token: data.token, user: data.user || { email } };
-      } else {
-        lastError = data.message || "Invalid credentials or unauthorized email";
-      }
-    } catch (err) {
-      console.warn(`Failed to connect to ${url}:`, err.message);
-      lastError = "Unable to connect to server. Please ensure backend is running or check network.";
+  try {
+    const res = await apiCall("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (res.ok && data.success && data.token) {
+      setAdminAuth(data.token, data.user || { email });
+      return { success: true, token: data.token, user: data.user || { email } };
     }
+    return { success: false, message: data.message || "Invalid credentials or unauthorized email" };
+  } catch (err) {
+    return { success: false, message: "Unable to connect to server. Please ensure backend is running." };
   }
-
-  return { success: false, message: lastError };
 }
 
 /**
@@ -79,31 +94,14 @@ export async function loginAdmin(email, password) {
 export async function verifyAdminToken(token) {
   const activeToken = token || getAdminToken();
   if (!activeToken) return { success: false };
-
-  const endpoints = [
-    `${API_BASE_URL}/api/auth/me`,
-    `http://localhost:5000/api/auth/me`,
-    `${PROD_API_URL}/api/auth/me`,
-  ];
-
-  for (const url of Array.from(new Set(endpoints))) {
-    try {
-      const res = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${activeToken}`,
-        },
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        return { success: true, user: data.user };
-      }
-    } catch (err) {
-      console.warn(`Token verification failed at ${url}:`, err.message);
-    }
-  }
-
+  try {
+    const res = await apiCall("/api/auth/me", {
+      method: "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeToken}` },
+    });
+    const data = await res.json();
+    if (res.ok && data.success) return { success: true, user: data.user };
+  } catch (_) {}
   return { success: false };
 }
 
@@ -122,26 +120,27 @@ export async function fetchWithAuth(endpoint, options = {}) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const urls = [
-    endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${endpoint}`,
-    endpoint.startsWith("http") ? endpoint : `${PROD_API_URL}${endpoint}`,
-  ];
-
-  let lastRes = null;
-  for (const url of Array.from(new Set(urls))) {
-    try {
-      const response = await fetch(url, { ...options, headers });
-      if (response.ok || response.status === 400 || response.status === 401 || response.status === 404 || response.status === 409) {
-        return response;
-      }
-      lastRes = response;
-    } catch (err) {
-      // Continue to next fallback URL
+  const url = endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${endpoint}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, { ...options, headers, signal: controller.signal });
+    clearTimeout(timer);
+    if (response.ok || [400, 401, 404, 409].includes(response.status)) return response;
+    // fallback to prod if on localhost
+    if (API_BASE_URL !== PROD_API_URL) {
+      const fallback = endpoint.startsWith("http") ? endpoint : `${PROD_API_URL}${endpoint}`;
+      return await fetch(fallback, { ...options, headers });
     }
+    return response;
+  } catch (err) {
+    clearTimeout(timer);
+    if (API_BASE_URL !== PROD_API_URL) {
+      const fallback = endpoint.startsWith("http") ? endpoint : `${PROD_API_URL}${endpoint}`;
+      return await fetch(fallback, { ...options, headers });
+    }
+    throw new Error("Unable to connect to backend server");
   }
-
-  if (lastRes) return lastRes;
-  throw new Error("Unable to connect to backend server");
 }
 
 /* ==========================================================================
@@ -150,42 +149,18 @@ export async function fetchWithAuth(endpoint, options = {}) {
 
 export async function listCategoriesApi(collection) {
   const query = collection ? `?collection=${encodeURIComponent(collection)}` : "";
-  const endpoints = [
-    `${API_BASE_URL}/api/categories${query}`,
-    `${PROD_API_URL}/api/categories${query}`,
-  ];
-
-  for (const url of Array.from(new Set(endpoints))) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        return data;
-      }
-    } catch (_err) {
-      // continue fallback
-    }
-  }
+  try {
+    const res = await apiCall(`/api/categories${query}`);
+    if (res.ok) return await res.json();
+  } catch (_) {}
   return { success: false, data: [] };
 }
 
 export async function listCategoriesGroupedApi() {
-  const endpoints = [
-    `${API_BASE_URL}/api/categories/grouped`,
-    `${PROD_API_URL}/api/categories/grouped`,
-  ];
-
-  for (const url of Array.from(new Set(endpoints))) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        return data;
-      }
-    } catch (_err) {
-      // continue fallback
-    }
-  }
+  try {
+    const res = await apiCall(`/api/categories/grouped`);
+    if (res.ok) return await res.json();
+  } catch (_) {}
   return { success: false, data: {} };
 }
 
@@ -257,25 +232,20 @@ export async function listProductsApi(params = {}) {
   if (params.collection) queryParams.append("collection", params.collection);
   if (params.category) queryParams.append("category", params.category);
   if (params.subcategory) queryParams.append("subcategory", params.subcategory);
-
-  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
-  const endpoints = [
-    `${API_BASE_URL}/api/products${queryString}`,
-    `${PROD_API_URL}/api/products${queryString}`,
-  ];
-
-  for (const url of Array.from(new Set(endpoints))) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        return data;
-      }
-    } catch (_err) {
-      // continue fallback
-    }
-  }
+  const qs = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  try {
+    const res = await apiCall(`/api/products${qs}`);
+    if (res.ok) return await res.json();
+  } catch (_) {}
   return { success: false, data: [] };
+}
+
+export async function getProductByIdApi(id) {
+  try {
+    const res = await apiCall(`/api/products/${id}`);
+    if (res.ok) return await res.json();
+  } catch (_) {}
+  return { success: false, data: null };
 }
 
 export async function createProductJsonApi(productData) {
@@ -328,26 +298,6 @@ export async function deleteProductApi(id) {
   }
 }
 
-export async function getProductByIdApi(id) {
-  const endpoints = [
-    `${API_BASE_URL}/api/products/${id}`,
-    `${PROD_API_URL}/api/products/${id}`,
-  ];
-
-  for (const url of Array.from(new Set(endpoints))) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        return data;
-      }
-    } catch (_err) {
-      // continue fallback
-    }
-  }
-  return { success: false, data: null };
-}
-
 /* ==========================================================================
    ENQUIRIES, MENUS & REELS APIS
    ========================================================================== */
@@ -362,22 +312,10 @@ export async function listEnquiriesApi() {
 }
 
 export async function listMenusApi() {
-  const endpoints = [
-    `${API_BASE_URL}/api/menus`,
-    `${PROD_API_URL}/api/menus`,
-  ];
-
-  for (const url of Array.from(new Set(endpoints))) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        return data;
-      }
-    } catch (_err) {
-      // continue fallback
-    }
-  }
+  try {
+    const res = await apiCall(`/api/menus`);
+    if (res.ok) return await res.json();
+  } catch (_) {}
   return { success: false, data: [] };
 }
 
@@ -391,21 +329,10 @@ export async function listReelsApi() {
 }
 
 export async function listPublicReelsApi() {
-  const endpoints = [
-    `${API_BASE_URL}/api/instagram-reels`,
-    `${PROD_API_URL}/api/instagram-reels`,
-  ];
-
-  for (const url of Array.from(new Set(endpoints))) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (_err) {
-      // continue fallback
-    }
-  }
+  try {
+    const res = await apiCall(`/api/instagram-reels`);
+    if (res.ok) return await res.json();
+  } catch (_) {}
   return { success: false, data: [] };
 }
 

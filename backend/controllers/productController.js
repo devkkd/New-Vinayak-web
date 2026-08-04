@@ -22,7 +22,7 @@ const deleteFromR2 = async (key) => {
 
 export const uploadProduct = async (req, res) => {
   try {
-    let { productName, details, sku, collection, category, subcategory } = req.body;
+    let { productName, details, sku, collection, collections: extraCollections, category, subcategory } = req.body;
     if (productName) productName = productName.trim();
     if (details) details = details.trim();
     if (sku) sku = sku.trim();
@@ -35,11 +35,21 @@ export const uploadProduct = async (req, res) => {
     for (const file of files) uploadResults.push(await uploadToR2(file.buffer, file.mimetype));
     const imageUrls = uploadResults.map((r) => r.url);
     const imagePublicIds = uploadResults.map((r) => r.key);
+    // Parse extra collections
+    let parsedCollections = [];
+    if (extraCollections !== undefined) {
+      parsedCollections = Array.isArray(extraCollections)
+        ? extraCollections
+        : typeof extraCollections === "string"
+          ? (() => { try { return JSON.parse(extraCollections); } catch { return [extraCollections]; } })()
+          : [];
+    }
     const draft = {
       productName,
       details,
       sku,
       collection: collection || undefined,
+      collections: parsedCollections.filter(Boolean).map(c => c.trim()),
       category: category || undefined,
       subcategory: subcategory || undefined,
     };
@@ -112,7 +122,13 @@ export const listProducts = async (req, res) => {
     }
     const filter =
       clauses.length === 0 ? {} : clauses.length === 1 ? clauses[0] : { $and: clauses };
-    const products = await Product.find(filter).sort({ createdAt: -1 });
+    const products = await Product.find(filter)
+      .select("productName sku image images collection collections category subcategory createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Cache public product lists for 60s at CDN/browser level
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
     return res.json({ success: true, data: products, count: products.length });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Failed to fetch products", error: error.message });
@@ -169,7 +185,7 @@ export const getProductById = async (req, res) => {
 
 export const updateProduct = async (req, res) => {
   try {
-    const { productName, details, sku, collection, category, subcategory } = req.body;
+    const { productName, details, sku, collection, collections: extraCollections, category, subcategory } = req.body;
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ success: false, message: "Product not found" });
     const files = req.files?.length > 0 ? req.files : req.file ? [req.file] : [];
@@ -187,6 +203,15 @@ export const updateProduct = async (req, res) => {
     if (details !== undefined) product.details = details.trim();
     if (sku !== undefined) product.sku = sku.trim();
     if (collection !== undefined) product.collection = collection?.trim() || undefined;
+    // Handle extra collections array from frontend (multi-collection support)
+    if (extraCollections !== undefined) {
+      const parsed = Array.isArray(extraCollections)
+        ? extraCollections
+        : typeof extraCollections === "string"
+          ? JSON.parse(extraCollections)
+          : [];
+      product.collections = parsed.filter(Boolean).map(c => c.trim());
+    }
     if (category !== undefined || subcategory !== undefined) {
       const tax = normalizeTaxonomy({
         category: category !== undefined ? category : product.category,

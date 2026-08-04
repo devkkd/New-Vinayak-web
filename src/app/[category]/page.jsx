@@ -462,7 +462,7 @@ export default function CategoryPage() {
                           </div>
                         </div>
                         {/* Products row for this subcategory */}
-                        <div className="cat-grid">
+                        <div className={`cat-grid ${isCollections ? "cat-grid-4" : ""}`}>
                           {groupedBySubcategory.grouped[subcat].map((p) => (
                             <div className="cat-card" key={getId(p)}>
                               <Link href={getHref(p)}>
@@ -498,7 +498,7 @@ export default function CategoryPage() {
                   </div>
                 ) : (
                   /* ── Flat grid (subcategory filter active or non-collections) ── */
-                  <div className="cat-grid">
+                  <div className={`cat-grid ${isCollections ? "cat-grid-4" : ""}`}>
                     {displayProducts.map((p) => (
                       <div className="cat-card" key={getId(p)}>
                         <Link href={getHref(p)}>
@@ -669,52 +669,57 @@ export default function CategoryPage() {
 }
         .cat-grid-head { display: flex; justify-content: flex-end; margin-bottom: 16px; }
         .cat-grid-count { background: #fdeccb; padding: 8px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; }
-        .cat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        .cat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+        .cat-grid-4 { grid-template-columns: repeat(4, 1fr); }
 
-        /* ── Product card — matches reference design ── */
+        /* ── Product card ── */
         .cat-card {
           display: flex;
           flex-direction: column;
           background: #ffffff;
-          border-radius: 18px;
+          border-radius: 12px;
           overflow: hidden;
-          box-shadow: 0 2px 12px rgba(104,31,0,0.07);
-          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.10);
+          transition: transform 0.22s ease, box-shadow 0.22s ease;
         }
         .cat-card:hover {
-          transform: translateY(-3px);
-          box-shadow: 0 8px 28px rgba(104,31,0,0.13);
+          transform: translateY(-4px);
+          box-shadow: 0 14px 36px rgba(0,0,0,0.18);
         }
 
-        /* image area — square ratio so cards stay compact, 8+ visible per screen */
+        /* image — portrait, dark bg like screenshot */
         .cat-card-imgwrap {
           width: 100%;
-          aspect-ratio: 4 / 3;
+          aspect-ratio: 3 / 4;
           overflow: hidden;
-          background: #f8f0e3;
+          background: #0e0e0e;
           flex-shrink: 0;
+          position: relative;
         }
         .cat-card-img {
           width: 100%;
           height: 100%;
           object-fit: cover;
           display: block;
-          transition: transform 0.38s ease;
+          transition: transform 0.45s ease;
         }
-        .cat-card:hover .cat-card-img { transform: scale(1.03); }
+        .cat-card:hover .cat-card-img { transform: scale(1.04); }
 
-        /* text + button below the image */
+        /* text + button */
         .cat-card-body {
           display: flex;
           flex-direction: column;
+          justify-content: space-between;
           padding: 10px 12px 12px;
-          gap: 8px;
+          gap: 10px;
           background: #ffffff;
+          flex: 1;
+          min-height: 90px;
         }
         .cat-card-title {
           font-size: 13px;
-          font-weight: 700;
-          line-height: 1.4;
+          font-weight: 500;
+          line-height: 1.45;
           color: #1a1a1a;
           display: -webkit-box;
           -webkit-line-clamp: 2;
@@ -728,18 +733,18 @@ export default function CategoryPage() {
           justify-content: center;
           width: 100%;
           height: 40px;
-          background: #5a1a00;
+          background: #5a1500;
           color: #ffffff;
           font-weight: 600;
           font-size: 13px;
-          letter-spacing: 0.01em;
+          letter-spacing: 0.02em;
           border: none;
-          border-radius: 999px;
+          border-radius: 6px;
           cursor: pointer;
           transition: background 0.2s ease;
           flex-shrink: 0;
         }
-        .cat-card-btn:hover { background: #3d1000; }
+        .cat-card-btn:hover { background: #3d0e00; }
         .cat-no-products { text-align: center; font-size: 18px; padding: 60px 0; }
         .cat-empty { padding: 60px; text-align: center; }
 
@@ -1276,19 +1281,19 @@ cursor:pointer;
   }
 
   .cat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
   }
+  .cat-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .cat-card-title {
-    font-size: 13px;
-    -webkit-line-clamp: 3;
+    font-size: 12px;
   }
 
   .cat-card-btn {
     width: 100%;
-    height: 40px;
-    font-size: 13px;
+    height: 36px;
+    font-size: 12px;
   }
 
   .cat-sections {
@@ -1310,7 +1315,7 @@ cursor:pointer;
 
   .cat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
   }
 
   .cat-card-body {
@@ -1319,13 +1324,13 @@ cursor:pointer;
   }
 
   .cat-card-title {
-    font-size: 12px;
-    -webkit-line-clamp: 3;
+    font-size: 11px;
+    -webkit-line-clamp: 2;
   }
 
   .cat-card-btn {
-    height: 38px;
-    font-size: 12px;
+    height: 34px;
+    font-size: 11px;
   }
 
   .cat-heading {
