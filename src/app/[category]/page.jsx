@@ -589,6 +589,7 @@ export default function CategoryPage() {
   width: 100%;
   min-height: 100vh;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
   .cat-content {
   padding: 32px 48px 48px;
@@ -1153,86 +1154,77 @@ cursor:pointer;
 }
        @media (max-width: 900px) {
   .cat-content {
-    padding: 20px 16px 32px;
+    padding: 20px 0 32px;
+    overflow-x: hidden;
   }
 
   .cat-heading {
     font-size: 28px;
     line-height: 1.3;
+    padding: 0 16px;
   }
 
   .cat-note {
     font-size: 13px;
     margin-bottom: 18px;
+    padding: 0 16px;
   }
 
   .cat-body-with-sidebar {
     flex-direction: column;
-    gap: 20px;
+    gap: 8px;
   }
 
   .cat-sidebar {
     width: 100%;
     position: static;
     top: auto;
+    overflow: hidden;
   }
 
-  .cat-sidebar-title {
-    font-size: 22px;
-    margin-bottom: 14px;
-  }
+  /* Hide sidebar title on mobile */
+  .cat-sidebar-title { display: none; }
+  .cat-sidebar-sub { display: none; }
+  .cat-sidebar-section-label { display: none; }
+  .cat-sidebar-section { margin-top: 0; }
 
-  .cat-sidebar-sub {
-    display: none;
-  }
-
-  .cat-sidebar-list {
-    display: flex;
-    flex-direction: row;
-    gap: 10px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    white-space: nowrap;
-    padding-bottom: 6px;
-    scrollbar-width: none;
-  }
-
-  .cat-sidebar-list::-webkit-scrollbar {
-    display: none;
-  }
-
-  .cat-sidebar-item {
-    flex: 0 0 auto;
-    padding: 10px 16px;
-    border-radius: 999px;
-    font-size: 14px;
-  }
-
-  .cat-grid-wrap {
-    height: auto;
-    overflow: visible;
-    padding-right: 0;
-  }
-
-  .cat-grid-head {
-    justify-content: space-between;
-    margin-bottom: 14px;
-  }
-
-  .cat-sidebar-section {
-    margin-top: 14px;
-  }
-
-  /* Mobile: category list scrolls horizontally as pills */
-  .cat-sidebar-cat-list {
-    flex-direction: row;
-    flex-wrap: nowrap;
-    overflow-x: auto;
+  /* ── All scroll rows: full viewport width, scroll inside ── */
+  .cat-sidebar-list,
+  .cat-sidebar-cat-list,
+  .cat-htabs,
+  .cat-hsubpills,
+  .cat-subcategory-pills {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: visible !important;
     gap: 8px;
-    padding-bottom: 4px;
+    padding: 4px 16px 8px !important;
     scrollbar-width: none;
+    width: 100% !important;
+    box-sizing: border-box;
   }
-  .cat-sidebar-cat-list::-webkit-scrollbar { display: none; }
+  .cat-sidebar-list::-webkit-scrollbar,
+  .cat-sidebar-cat-list::-webkit-scrollbar,
+  .cat-htabs::-webkit-scrollbar,
+  .cat-hsubpills::-webkit-scrollbar,
+  .cat-subcategory-pills::-webkit-scrollbar { display: none; }
+
+  .cat-sidebar-item,
+  .cat-htab,
+  .cat-sub-pill,
+  .cat-hsubpill {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .cat-sidebar-item { padding: 8px 14px; border-radius: 999px; font-size: 13px; }
+  .cat-htab { font-size: 12px; padding: 7px 14px; }
+  .cat-hsubpill { font-size: 11px; padding: 4px 12px; }
+  .cat-sub-pill { font-size: 13px; padding: 8px 14px; }
+
+  /* Mobile category pills */
+  .cat-sidebar-cat-list { flex-wrap: nowrap !important; }
   .cat-sidebar-cat-group { flex: 0 0 auto; }
   .cat-sidebar-cat-header {
     border-left: none;
@@ -1241,43 +1233,34 @@ cursor:pointer;
     padding: 8px 16px;
     white-space: nowrap;
   }
-  .cat-sidebar-cat-active {
-    background: #681f00 !important;
-    color: #fff6de !important;
-  }
+  .cat-sidebar-cat-active { background: #681f00 !important; color: #fff6de !important; }
   .cat-sidebar-cat-active .cat-sidebar-cat-name { color: #fff6de; }
   .cat-sidebar-cat-badge { display: none; }
 
-  /* Mobile: horizontal tabs scroll */
-  .cat-htabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    padding-bottom: 4px;
+  /* Product grid area gets side padding */
+  .cat-grid-wrap {
+    height: auto;
+    overflow: visible;
+    padding: 0 16px;
+    box-sizing: border-box;
+    width: 100%;
   }
-  .cat-htabs::-webkit-scrollbar { display: none; }
-  .cat-htab { flex: 0 0 auto; font-size: 12px; padding: 7px 14px; }
-  .cat-hsubpills {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    padding-bottom: 2px;
+
+  /* htabs-wrap pulls out of grid-wrap padding to go full bleed */
+  .cat-htabs-wrap {
+    margin-left: -16px;
+    margin-right: -16px;
+    width: calc(100% + 32px);
+    overflow: hidden;
   }
-  .cat-hsubpills::-webkit-scrollbar { display: none; }
-  .cat-hsubpill { flex: 0 0 auto; font-size: 11px; padding: 4px 12px; }
-  .cat-subcategory-pills {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    gap: 8px;
-    scrollbar-width: none;
-    padding-bottom: 4px;
+
+  .cat-grid-head {
+    justify-content: space-between;
+    margin-bottom: 12px;
   }
-  .cat-subcategory-pills::-webkit-scrollbar { display: none; }
-  .cat-sub-pill {
-    flex: 0 0 auto;
-    font-size: 13px;
-    padding: 8px 14px;
+
+  .cat-htabs-wrap {
+    padding: 0;
   }
 
   .cat-grid {
@@ -1286,31 +1269,21 @@ cursor:pointer;
   }
   .cat-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-  .cat-card-title {
-    font-size: 12px;
-  }
+  .cat-card-title { font-size: 12px; }
+  .cat-card-btn { width: 100%; height: 36px; font-size: 12px; }
 
-  .cat-card-btn {
-    width: 100%;
-    height: 36px;
-    font-size: 12px;
-  }
-
-  .cat-sections {
-    gap: 36px;
-  }
-
-  .cat-section-title-btn {
-    font-size: 18px;
-  }
-
-  .cat-section-view-all {
-    display: none;
-  }
+  .cat-sections { gap: 36px; }
+  .cat-section-title-btn { font-size: 18px; }
+  .cat-section-view-all { display: none; }
 }
        @media (max-width: 520px) {
   .cat-content {
-    padding: 20px 12px;
+    padding: 16px 0 24px;
+    overflow-x: hidden;
+  }
+
+  .cat-grid-wrap {
+    padding: 0 12px;
   }
 
   .cat-grid {
@@ -1318,29 +1291,11 @@ cursor:pointer;
     gap: 10px;
   }
 
-  .cat-card-body {
-    padding: 10px 10px 12px;
-    gap: 8px;
-  }
-
-  .cat-card-title {
-    font-size: 11px;
-    -webkit-line-clamp: 2;
-  }
-
-  .cat-card-btn {
-    height: 34px;
-    font-size: 11px;
-  }
-
-  .cat-heading {
-    font-size: 24px;
-  }
-
-  .cat-grid-count {
-    font-size: 12px;
-    padding: 6px 12px;
-  }
+  .cat-card-body { padding: 10px 10px 12px; gap: 8px; }
+  .cat-card-title { font-size: 11px; -webkit-line-clamp: 2; }
+  .cat-card-btn { height: 34px; font-size: 11px; }
+  .cat-heading { font-size: 24px; padding: 0 12px; }
+  .cat-grid-count { font-size: 12px; padding: 6px 12px; }
 }
       `}</style>
        <ContactCTA />

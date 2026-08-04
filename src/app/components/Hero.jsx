@@ -20,11 +20,13 @@ const banners = [
 export default function HeroSection() {
   const [current, setCurrent] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
-  // Track which slide images are fully decoded & ready to show
-  const [ready, setReady] = useState({ 0: false });
+  // Start with slide 0 ready so hero shows immediately
+  const [ready, setReady] = useState({});
   const intervalRef = useRef(null);
+  // Track previous src to re-mark ready when src changes (mobile/desktop switch)
+  const prevSrcRef = useRef({});
 
-  // Detect mobile after mount — no hydration mismatch
+  // Detect mobile after mount
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
     check();
@@ -32,7 +34,12 @@ export default function HeroSection() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Auto-advance only after current slide image is ready
+  // When isMobile changes, reset ready state so images re-trigger onLoad
+  useEffect(() => {
+    setReady({});
+    prevSrcRef.current = {};
+  }, [isMobile]);
+
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(() => {
@@ -53,29 +60,35 @@ export default function HeroSection() {
     setReady((prev) => ({ ...prev, [index]: true }));
   };
 
+  // Show slide if: ready OR it's index 0 and we just mounted (fallback)
+  const isSlideVisible = (index) => ready[index] && index === current;
+
   return (
     <section className={`hero ${plusJakarta.className}`} style={{ background: "#111", display: "block" }}>
-   <div
-  className="hero-wrapper"
-  style={{
-    position: "relative",
-    width: "100%",
-    overflow: "hidden",
-    background: "#111",
-  }}
->
+      <div
+        className="hero-wrapper"
+        style={{ position: "relative", width: "100%", overflow: "hidden", background: "#111" }}
+      >
+        {/* Skeleton shown until first image loads */}
+        {!ready[0] && (
+          <div className="hero-skeleton" aria-hidden="true" />
+        )}
 
         {banners.map((banner, index) => {
           const src = isMobile ? banner.mobile : banner.desktop;
-          const isActive = index === current;
-          const isVisible = ready[index] && isActive;
+          const visible = isSlideVisible(index);
 
           return (
             <div
               key={index}
-              className={`slide ${isVisible ? "slide-visible" : ""}`}
-              style={{ position: "absolute", inset: 0, opacity: isVisible ? 1 : 0, transition: "opacity 0.6s ease", zIndex: isVisible ? 1 : 0 }}
-              aria-hidden={!isActive}
+              style={{
+                position: "absolute",
+                inset: 0,
+                opacity: visible ? 1 : 0,
+                transition: "opacity 0.6s ease",
+                zIndex: visible ? 1 : 0,
+              }}
+              aria-hidden={!visible}
             >
               <Image
                 src={src}
@@ -118,23 +131,21 @@ export default function HeroSection() {
           width: 100%;
           height: 650px;
           overflow: hidden;
-          /* Dark bg shows while first image loads — no white flash */
           background: #111;
         }
 
-        /* Each slide is a full-cover layer, invisible by default */
-        .slide {
+        /* Skeleton shimmer shown while first image loads */
+        .hero-skeleton {
           position: absolute;
           inset: 0;
-          opacity: 0;
-          transition: opacity 0.6s ease;
-          z-index: 0;
+          z-index: 2;
+          background: linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 50%, #1a1a1a 75%);
+          background-size: 200% 100%;
+          animation: shimmer 1.5s infinite;
         }
-
-        /* Only show when image is decoded AND it's the active slide */
-        .slide-visible {
-          opacity: 1;
-          z-index: 1;
+        @keyframes shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
         }
 
         .hero-image {
