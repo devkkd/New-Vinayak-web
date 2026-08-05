@@ -260,10 +260,14 @@ export async function listProductsApi(params = {}) {
   if (params.collection) queryParams.append("collection", params.collection);
   if (params.category) queryParams.append("category", params.category);
   if (params.subcategory) queryParams.append("subcategory", params.subcategory);
-  const qs = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  // cache-bust: timestamp ensures fresh data every time
+  queryParams.append("_t", Date.now().toString());
+  const qs = `?${queryParams.toString()}`;
   try {
-    // cache: 'no-store' ensures fresh data on every call — prevents stale browser cache
-    const res = await apiCall(`/api/products${qs}`, { cache: "no-store" });
+    const res = await apiCall(`/api/products${qs}`, {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache, no-store" },
+    });
     if (res.ok) return await res.json();
   } catch (_) {}
   return { success: false, data: [] };
@@ -279,11 +283,22 @@ export async function getProductByIdApi(id) {
 
 export async function createProductJsonApi(productData) {
   try {
-    const res = await fetchWithAuth("/api/products/upload-json", {
-      method: "POST",
-      body: JSON.stringify(productData),
-    });
-    return await res.json();
+    const token = getAdminToken();
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const body = JSON.stringify(productData);
+
+    const urls = [...new Set([
+      `${API_BASE_URL}/api/products/upload-json`,
+      `${PROD_API_URL}/api/products/upload-json`,
+    ])];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { method: "POST", headers, body });
+        if (res.ok || res.status === 400 || res.status === 409) return await res.json();
+      } catch (_) {}
+    }
+    return { success: false, message: "Unable to reach server" };
   } catch (err) {
     return { success: false, message: err.message };
   }
@@ -291,11 +306,21 @@ export async function createProductJsonApi(productData) {
 
 export async function createProductFormDataApi(formData) {
   try {
-    const res = await fetchWithAuth("/api/products/upload", {
-      method: "POST",
-      body: formData,
-    });
-    return await res.json();
+    const token = getAdminToken();
+    const headers = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const urls = [...new Set([
+      `${API_BASE_URL}/api/products/upload`,
+      `${PROD_API_URL}/api/products/upload`,
+    ])];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { method: "POST", headers, body: formData });
+        if (res.ok || res.status === 400 || res.status === 409) return await res.json();
+      } catch (_) {}
+    }
+    return { success: false, message: "Unable to reach server" };
   } catch (err) {
     return { success: false, message: err.message };
   }
@@ -311,10 +336,21 @@ export async function updateProductApi(id, productDataOrFormData) {
     if (!isFormData) headers["Content-Type"] = "application/json";
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    const url = `${API_BASE_URL}/api/products/${id}`;
-    const res = await fetch(url, { method: "PUT", headers, body });
-    const data = await res.json();
-    return data;
+    // Try primary URL first, fallback to prod
+    const urls = [...new Set([
+      `${API_BASE_URL}/api/products/${id}`,
+      `${PROD_API_URL}/api/products/${id}`,
+    ])];
+
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { method: "PUT", headers, body });
+        if (res.ok || res.status === 400 || res.status === 409) {
+          return await res.json();
+        }
+      } catch (_) { /* try next */ }
+    }
+    return { success: false, message: "Unable to reach server" };
   } catch (err) {
     return { success: false, message: err.message || "Update failed" };
   }
