@@ -46,8 +46,18 @@ router.get("/", listProducts);
 // Get single product
 router.get("/:id", getProductById);
 
-// Update product (optionally with new images) - supports both single and multiple
-router.put("/:id", upload.array("image", 10), updateProduct);
+// Update product — smart middleware: FormData with file OR plain JSON
+const updateMiddleware = (req, res, next) => {
+  const contentType = req.headers["content-type"] || "";
+  if (contentType.includes("multipart/form-data")) {
+    // File upload — use multer
+    upload.array("image", 10)(req, res, next);
+  } else {
+    // JSON body — use express.json()
+    express.json()(req, res, next);
+  }
+};
+router.put("/:id", updateMiddleware, updateProduct);
 
 // Delete product
 router.delete("/:id", deleteProduct);

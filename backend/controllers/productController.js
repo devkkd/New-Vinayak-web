@@ -123,7 +123,7 @@ export const listProducts = async (req, res) => {
     const filter =
       clauses.length === 0 ? {} : clauses.length === 1 ? clauses[0] : { $and: clauses };
     const products = await Product.find(filter)
-      .select("productName sku image images collection collections category subcategory createdAt")
+      .select("productName sku image images collection collections category subcategory details createdAt")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -186,7 +186,17 @@ export const getProductById = async (req, res) => {
 export const updateProduct = async (req, res) => {
   try {
     const { productName, details, sku, collection, collections: extraCollections, category, subcategory } = req.body;
-    const product = await Product.findById(req.params.id);
+
+    // Support both _id and SKU lookup
+    const paramId = req.params.id;
+    let product = null;
+    const isObjectId = /^[a-f\d]{24}$/i.test(paramId);
+    if (isObjectId) {
+      product = await Product.findById(paramId);
+    }
+    if (!product) {
+      product = await Product.findOne({ sku: paramId });
+    }
     if (!product) return res.status(404).json({ success: false, message: "Product not found" });
     const files = req.files?.length > 0 ? req.files : req.file ? [req.file] : [];
     if (files.length > 0) {
@@ -200,7 +210,7 @@ export const updateProduct = async (req, res) => {
       product.imagePublicIds = uploadResults.map((r) => r.key);
     }
     if (productName !== undefined) product.productName = productName.trim();
-    if (details !== undefined) product.details = details.trim();
+    if (details !== undefined && details.trim()) product.details = details.trim();
     if (sku !== undefined) product.sku = sku.trim();
     if (collection !== undefined) product.collection = collection?.trim() || undefined;
     // Handle extra collections array from frontend (multi-collection support)

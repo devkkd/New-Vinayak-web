@@ -116,6 +116,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
   // Add Product State with File Upload & URL
   const [showAddProductModal, setShowAddProductModal] = useState(false);
+  const [uploadingProduct, setUploadingProduct] = useState(false);
   const [newProdImageMode, setNewProdImageMode] = useState("file"); // "file" | "url"
   const [newProdFile, setNewProdFile] = useState(null);
   const [newProdFilePreview, setNewProdFilePreview] = useState(null);
@@ -320,34 +321,42 @@ export default function AdminDashboard({ user, onLogout }) {
       return;
     }
 
+    setUploadingProduct(true);
     let res;
-    if (newProdImageMode === "file" && newProdFile) {
-      const formData = new FormData();
-      formData.append("image", newProdFile);
-      formData.append("productName", newProdForm.productName.trim());
-      formData.append("sku", newProdForm.sku.trim());
-      formData.append("details", newProdForm.details.trim() || "High quality handcrafted jewellery.");
-      if (newProdForm.collection) formData.append("collection", newProdForm.collection);
-      formData.append("collections", JSON.stringify(newProdForm.extraCollections || []));
-      if (newProdForm.category) formData.append("category", newProdForm.category.trim());
-      if (newProdForm.subcategory) formData.append("subcategory", newProdForm.subcategory.trim());
-
-      res = await createProductFormDataApi(formData);
-    } else if (newProdForm.image) {
-      res = await createProductJsonApi({
-        productName: newProdForm.productName.trim(),
-        sku: newProdForm.sku.trim(),
-        details: newProdForm.details.trim() || "High quality handcrafted jewellery.",
-        collection: newProdForm.collection,
-        collections: newProdForm.extraCollections || [],
-        category: newProdForm.category,
-        subcategory: newProdForm.subcategory,
-        image: newProdForm.image.trim(),
-      });
-    } else {
-      showAlert("error", "Please upload an image file or provide an Image URL.");
+    try {
+      if (newProdImageMode === "file" && newProdFile) {
+        const formData = new FormData();
+        formData.append("image", newProdFile);
+        formData.append("productName", newProdForm.productName.trim());
+        formData.append("sku", newProdForm.sku.trim());
+        formData.append("details", newProdForm.details.trim() || "High quality handcrafted jewellery.");
+        if (newProdForm.collection) formData.append("collection", newProdForm.collection);
+        formData.append("collections", JSON.stringify(newProdForm.extraCollections || []));
+        if (newProdForm.category) formData.append("category", newProdForm.category.trim());
+        if (newProdForm.subcategory) formData.append("subcategory", newProdForm.subcategory.trim());
+        res = await createProductFormDataApi(formData);
+      } else if (newProdForm.image) {
+        res = await createProductJsonApi({
+          productName: newProdForm.productName.trim(),
+          sku: newProdForm.sku.trim(),
+          details: newProdForm.details.trim() || "High quality handcrafted jewellery.",
+          collection: newProdForm.collection,
+          collections: newProdForm.extraCollections || [],
+          category: newProdForm.category,
+          subcategory: newProdForm.subcategory,
+          image: newProdForm.image.trim(),
+        });
+      } else {
+        showAlert("error", "Please upload an image file or provide an Image URL.");
+        setUploadingProduct(false);
+        return;
+      }
+    } catch (err) {
+      showAlert("error", "Upload failed: " + (err?.message || "Network error"));
+      setUploadingProduct(false);
       return;
     }
+    setUploadingProduct(false);
 
     if (res && res.success) {
       showAlert("success", "Product added successfully!");
@@ -364,9 +373,14 @@ export default function AdminDashboard({ user, onLogout }) {
       });
       setNewProdFile(null);
       setNewProdFilePreview(null);
-      loadAllData();
+      // Instantly prepend to list — no full reload
+      if (res.data) {
+        setProducts(prev => [res.data, ...prev]);
+      } else {
+        loadAllData();
+      }
     } else {
-      showAlert("error", res.message || "Failed to create product.");
+      showAlert("error", res?.message || "Failed to create product.");
     }
   };
 
@@ -397,40 +411,62 @@ export default function AdminDashboard({ user, onLogout }) {
       return;
     }
 
+    setUploadingProduct(true);
     let res;
-    if (editProdImageMode === "file" && editProdFile) {
-      const formData = new FormData();
-      formData.append("image", editProdFile);
-      formData.append("productName", editProdForm.productName.trim());
-      formData.append("sku", editProdForm.sku.trim());
-      formData.append("details", editProdForm.details.trim());
-      if (editProdForm.collection) formData.append("collection", editProdForm.collection);
-      formData.append("collections", JSON.stringify(editProdForm.extraCollections || []));
-      if (editProdForm.category) formData.append("category", editProdForm.category.trim());
-      if (editProdForm.subcategory) formData.append("subcategory", editProdForm.subcategory.trim());
-
-      res = await updateProductApi(editProdForm.id, formData);
-    } else {
-      res = await updateProductApi(editProdForm.id, {
-        productName: editProdForm.productName.trim(),
-        sku: editProdForm.sku.trim(),
-        details: editProdForm.details.trim(),
-        collection: editProdForm.collection,
-        collections: editProdForm.extraCollections || [],
-        category: editProdForm.category.trim(),
-        subcategory: editProdForm.subcategory.trim(),
-        image: editProdForm.image.trim(),
-      });
+    try {
+      if (editProdImageMode === "file" && editProdFile) {
+        const formData = new FormData();
+        formData.append("image", editProdFile);
+        formData.append("productName", editProdForm.productName.trim());
+        formData.append("sku", editProdForm.sku.trim());
+        formData.append("details", editProdForm.details.trim());
+        if (editProdForm.collection) formData.append("collection", editProdForm.collection);
+        formData.append("collections", JSON.stringify(editProdForm.extraCollections || []));
+        if (editProdForm.category) formData.append("category", editProdForm.category.trim());
+        if (editProdForm.subcategory) formData.append("subcategory", editProdForm.subcategory.trim());
+        res = await updateProductApi(editProdForm.id, formData);
+      } else {
+        res = await updateProductApi(editProdForm.id, {
+          productName: editProdForm.productName.trim(),
+          sku: editProdForm.sku.trim(),
+          details: editProdForm.details.trim() || "High quality handcrafted jewellery.",
+          collection: editProdForm.collection,
+          collections: editProdForm.extraCollections || [],
+          category: editProdForm.category.trim(),
+          subcategory: editProdForm.subcategory.trim(),
+          image: editProdForm.image.trim(),
+        });
+      }
+    } catch (err) {
+      showAlert("error", "Update failed: " + (err?.message || "Network error"));
+      setUploadingProduct(false);
+      return;
     }
+    setUploadingProduct(false);
 
     if (res && res.success) {
       showAlert("success", "Product updated successfully!");
       setShowEditProductModal(false);
       setEditProdFile(null);
       setEditProdFilePreview(null);
-      loadAllData();
+      // Instantly update local state using form values
+      const updatedProduct = {
+        ...(res.data || {}),
+        _id: editProdForm.id,
+        productName: editProdForm.productName.trim(),
+        sku: editProdForm.sku.trim(),
+        details: editProdForm.details.trim(),
+        collection: editProdForm.collection,
+        collections: [editProdForm.collection, ...(editProdForm.extraCollections || [])],
+        category: editProdForm.category,
+        subcategory: editProdForm.subcategory,
+        image: editProdForm.image || undefined,
+      };
+      setProducts(prev => prev.map(p =>
+        String(p._id || p.id) === String(editProdForm.id) ? { ...p, ...updatedProduct } : p
+      ));
     } else {
-      showAlert("error", res.message || "Failed to update product.");
+      showAlert("error", `Update failed: ${res?.message || res?.error || "Unknown error"}`);
     }
   };
 
@@ -439,7 +475,7 @@ export default function AdminDashboard({ user, onLogout }) {
     const res = await deleteProductApi(prodId);
     if (res && res.success) {
       showAlert("success", "Product deleted successfully!");
-      loadAllData();
+      setProducts(prev => prev.filter(p => (p._id || p.id) !== prodId));
     } else {
       showAlert("error", res.message || "Failed to delete product.");
     }
@@ -2316,9 +2352,12 @@ export default function AdminDashboard({ user, onLogout }) {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#d4af37] via-[#c59b27] to-[#b89028] text-white font-bold text-xs hover:brightness-105 shadow-xs"
+                  disabled={uploadingProduct}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#d4af37] via-[#c59b27] to-[#b89028] text-white font-bold text-xs hover:brightness-105 shadow-xs disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Save Product
+                  {uploadingProduct ? (
+                    <><span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Uploading…</>
+                  ) : "Save Product"}
                 </button>
               </div>
             </form>
@@ -2572,9 +2611,12 @@ export default function AdminDashboard({ user, onLogout }) {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs hover:bg-amber-700 shadow-xs"
+                  disabled={uploadingProduct}
+                  className="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs hover:bg-amber-700 shadow-xs disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Update Product
+                  {uploadingProduct ? (
+                    <><span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving…</>
+                  ) : "Update Product"}
                 </button>
               </div>
             </form>

@@ -140,12 +140,21 @@ export async function fetchWithAuth(endpoint, options = {}) {
   }
 
   const url = endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${endpoint}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+
+  // File uploads need much more time — no timeout for FormData
+  // Regular auth requests get 20s
+  const useTimeout = !isFormData;
+  const controller = useTimeout ? new AbortController() : null;
+  const timer = useTimeout ? setTimeout(() => controller.abort(), 20000) : null;
+
   try {
-    const response = await fetch(url, { ...options, headers, signal: controller.signal });
-    clearTimeout(timer);
+    const fetchOptions = { ...options, headers };
+    if (controller) fetchOptions.signal = controller.signal;
+
+    const response = await fetch(url, fetchOptions);
+    if (timer) clearTimeout(timer);
     if (response.ok || [400, 401, 404, 409].includes(response.status)) return response;
+
     // fallback to prod if on localhost
     if (API_BASE_URL !== PROD_API_URL) {
       const fallback = endpoint.startsWith("http") ? endpoint : `${PROD_API_URL}${endpoint}`;
@@ -153,7 +162,7 @@ export async function fetchWithAuth(endpoint, options = {}) {
     }
     return response;
   } catch (err) {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     if (API_BASE_URL !== PROD_API_URL) {
       const fallback = endpoint.startsWith("http") ? endpoint : `${PROD_API_URL}${endpoint}`;
       return await fetch(fallback, { ...options, headers });
@@ -296,13 +305,17 @@ export async function updateProductApi(id, productDataOrFormData) {
     const isFormData = typeof FormData !== "undefined" && productDataOrFormData instanceof FormData;
     const body = isFormData ? productDataOrFormData : JSON.stringify(productDataOrFormData);
 
-    const res = await fetchWithAuth(`/api/products/${id}`, {
-      method: "PUT",
-      body: body,
-    });
-    return await res.json();
+    const token = getAdminToken();
+    const headers = {};
+    if (!isFormData) headers["Content-Type"] = "application/json";
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const url = `${API_BASE_URL}/api/products/${id}`;
+    const res = await fetch(url, { method: "PUT", headers, body });
+    const data = await res.json();
+    return data;
   } catch (err) {
-    return { success: false, message: err.message };
+    return { success: false, message: err.message || "Update failed" };
   }
 }
 
