@@ -262,7 +262,8 @@ export async function listProductsApi(params = {}) {
   if (params.subcategory) queryParams.append("subcategory", params.subcategory);
   const qs = queryParams.toString() ? `?${queryParams.toString()}` : "";
   try {
-    const res = await apiCall(`/api/products${qs}`);
+    // cache: 'no-store' ensures fresh data on every call — prevents stale browser cache
+    const res = await apiCall(`/api/products${qs}`, { cache: "no-store" });
     if (res.ok) return await res.json();
   } catch (_) {}
   return { success: false, data: [] };

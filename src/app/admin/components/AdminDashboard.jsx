@@ -21,6 +21,7 @@ import {
 import {
   getInitialAdminData,
   syncAdminDataDataStore,
+  invalidateAdminCache,
 } from "@/lib/dataStore";
 import {
   FiGrid,
@@ -373,7 +374,7 @@ export default function AdminDashboard({ user, onLogout }) {
       });
       setNewProdFile(null);
       setNewProdFilePreview(null);
-      // Instantly prepend to list — no full reload
+      invalidateAdminCache(); // clear cache so reload shows new product
       if (res.data) {
         setProducts(prev => [res.data, ...prev]);
       } else {
@@ -449,7 +450,7 @@ export default function AdminDashboard({ user, onLogout }) {
       setShowEditProductModal(false);
       setEditProdFile(null);
       setEditProdFilePreview(null);
-      // Instantly update local state using form values
+      invalidateAdminCache(); // clear localStorage so reload fetches fresh data
       const updatedProduct = {
         ...(res.data || {}),
         _id: editProdForm.id,
@@ -475,6 +476,7 @@ export default function AdminDashboard({ user, onLogout }) {
     const res = await deleteProductApi(prodId);
     if (res && res.success) {
       showAlert("success", "Product deleted successfully!");
+      invalidateAdminCache();
       setProducts(prev => prev.filter(p => (p._id || p.id) !== prodId));
     } else {
       showAlert("error", res.message || "Failed to delete product.");

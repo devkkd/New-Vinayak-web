@@ -128,7 +128,13 @@ export const listProducts = async (req, res) => {
       .lean();
 
     // Cache public product lists for 60s at CDN/browser level
-    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    // Admin requests get no-cache header
+    const isAdminRequest = req.headers.authorization;
+    if (isAdminRequest) {
+      res.set("Cache-Control", "no-store");
+    } else {
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    }
     return res.json({ success: true, data: products, count: products.length });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Failed to fetch products", error: error.message });
