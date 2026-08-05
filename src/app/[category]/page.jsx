@@ -105,6 +105,9 @@ export default function CategoryPage() {
     if (!isCollections) return;
 
     let cancelled = false;
+    let retryCount = 0;
+    const MAX_RETRIES = 2;
+
     async function initialFetch() {
       setLoading(true);
       setError(null);
@@ -120,11 +123,22 @@ export default function CategoryPage() {
           const prods = prodRes.data || [];
           setProducts(prods);
           fetchCache.current[cacheKey({})] = prods;
+        } else if (retryCount < MAX_RETRIES) {
+          // Auto-retry on failure
+          retryCount++;
+          setTimeout(initialFetch, 2000 * retryCount);
+          return;
         } else {
           setError("products");
         }
       } catch {
-        if (!cancelled) setError("both");
+        if (cancelled) return;
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          setTimeout(initialFetch, 2000 * retryCount);
+          return;
+        }
+        setError("both");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1071,86 +1085,138 @@ inset:0;
 background:rgba(0,0,0,.55);
 display:flex;
 justify-content:center;
-align-items:center;
+align-items:flex-end;
 z-index:9999;
+padding: 0;
 }
 
 .popup{
-width:500px;
-max-width:60%;
+width:100%;
+max-width:480px;
 background:#FFF8E7;
-border-radius:28px;
-padding:40px;
+border-radius:28px 28px 0 0;
+padding:32px 24px 40px;
 position:relative;
+max-height:90vh;
+overflow-y:auto;
 }
 
 .popup-close{
 position:absolute;
-right:25px;
-top:20px;
-font-size:20px;
-
+right:20px;
+top:16px;
+font-size:22px;
 border:none;
 background:none;
 cursor:pointer;
+color:#681f00;
+line-height:1;
+width:32px;
+height:32px;
+display:flex;
+align-items:center;
+justify-content:center;
 }
 
 .popup h2{
 font-family:"Cinzel",serif;
-font-size:30px;
+font-size:22px;
 text-align:center;
-margin-bottom:16px;
+margin-bottom:12px;
+margin-top:4px;
 color:#681f00;
+line-height:1.3;
 }
 
 .popup>p{
 text-align:center;
-margin-bottom:30px;
-font-size:14px;
+margin-bottom:20px;
+font-size:13px;
+color:rgba(104,31,0,0.7);
+line-height:1.5;
 }
 
 .popup-product{
 display:flex;
-gap:20px;
-padding:20px;
+gap:14px;
+padding:14px;
 border:1px solid #e7d2a5;
-border-radius:18px;
-margin-bottom:30px;
+border-radius:14px;
+margin-bottom:20px;
+align-items:center;
 }
 
 .popup-product img{
-width:90px;
-height:90px;
+width:72px;
+height:72px;
 object-fit:cover;
-border-radius:12px;
+border-radius:10px;
+flex-shrink:0;
 }
 
 .popup-product h3{
-font-size:14px;
-margin-bottom:10px;
+font-size:13px;
+font-weight:600;
+margin-bottom:6px;
+color:#1a1a1a;
+line-height:1.4;
+display:-webkit-box;
+-webkit-line-clamp:2;
+-webkit-box-orient:vertical;
+overflow:hidden;
+}
+
+.popup-product p{
+font-size:11px;
+color:rgba(104,31,0,0.55);
+font-family:monospace;
+margin:0;
+overflow:hidden;
+text-overflow:ellipsis;
+white-space:nowrap;
+max-width:180px;
 }
 
 .popup-btn{
 width:100%;
-height:64px;
+height:56px;
 border:none;
 border-radius:999px;
 background:linear-gradient(90deg,#E8C57B,#7C2A00);
 color:#fff;
-font-size:18px;
-font-weight:500;
+font-size:16px;
+font-weight:600;
 cursor:pointer;
+transition:opacity 0.2s;
 }
+.popup-btn:hover{opacity:0.9;}
 
 .popup-link{
-margin-top:25px;
+display:block;
+margin-top:16px;
 background:none;
 border:none;
 width:100%;
-font-size:18px;
+font-size:15px;
 font-weight:500;
 color:#681f00;
 cursor:pointer;
+text-align:center;
+padding:8px 0;
+}
+
+@media (min-width: 600px){
+  .popup-overlay{
+    align-items:center;
+    padding:16px;
+  }
+  .popup{
+    border-radius:28px;
+    padding:40px;
+    width:480px;
+    max-height:85vh;
+  }
+  .popup h2{ font-size:26px; }
 }
        @media (max-width: 900px) {
   .cat-content {

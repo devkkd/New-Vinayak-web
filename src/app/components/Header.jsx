@@ -642,9 +642,9 @@ useEffect(() => {
                   <Icon className="hdr-drawer-item-icon" />
                   <span>{item.label}</span>
                 </span>
-                {item.dropdown && (
+                {/* {item.dropdown && (
                   <IconChevron className="hdr-drawer-chevron" />
-                )}
+                )} */}
               </Link>
             );
           })}

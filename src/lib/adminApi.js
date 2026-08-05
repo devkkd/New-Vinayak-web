@@ -7,8 +7,8 @@ export const API_BASE_URL =
 
 export const PROD_API_URL = "https://vinayak-jewellers-1.onrender.com";
 
-// Fast fetch helper — single URL, 8s timeout, no silent fallback loop
-async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+// Fast fetch helper with configurable timeout
+async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -21,20 +21,39 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   }
 }
 
-// Smart API call — uses correct URL based on environment, with 8s timeout
-async function apiCall(endpoint, options = {}) {
+// Smart API call — with auto-retry for cold starts (Render free tier)
+async function apiCall(endpoint, options = {}, retries = 2) {
   const base = API_BASE_URL;
   const url = endpoint.startsWith("http") ? endpoint : `${base}${endpoint}`;
-  try {
-    return await fetchWithTimeout(url, options, 8000);
-  } catch (_) {
-    // Only fallback to prod if we were on localhost and it failed
-    if (base !== PROD_API_URL) {
-      const fallbackUrl = endpoint.startsWith("http") ? endpoint : `${PROD_API_URL}${endpoint}`;
-      return await fetchWithTimeout(fallbackUrl, options, 10000);
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      // Increase timeout on each retry (cold start may need more time)
+      const timeout = attempt === 0 ? 15000 : 25000;
+      const res = await fetchWithTimeout(url, options, timeout);
+      if (res.ok || [400, 401, 404, 409].includes(res.status)) return res;
+      // Non-ok but not timeout — retry
+    } catch (_) {
+      // Timeout or network error — retry unless last attempt
+      if (attempt === retries) {
+        // Last attempt: try prod fallback if on localhost
+        if (base !== PROD_API_URL) {
+          const fallbackUrl = endpoint.startsWith("http") ? endpoint : `${PROD_API_URL}${endpoint}`;
+          return await fetchWithTimeout(fallbackUrl, options, 25000);
+        }
+        throw _;
+      }
+      // Wait a bit before retrying (exponential backoff)
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
     }
-    throw _;
   }
+
+  // If we get here with non-ok responses, try prod fallback
+  if (base !== PROD_API_URL) {
+    const fallbackUrl = endpoint.startsWith("http") ? endpoint : `${PROD_API_URL}${endpoint}`;
+    return await fetchWithTimeout(fallbackUrl, options, 25000);
+  }
+  throw new Error("API call failed after retries");
 }
 
 export const TOKEN_KEY = "admin_token";
