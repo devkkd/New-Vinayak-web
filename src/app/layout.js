@@ -7,13 +7,18 @@ import Script from "next/script";
 export const metadata = {
   title: "Vinayak Jewellery",
   description: "Premium Jewellery Shop",
+  icons: {
+    icon: "/Headerlogo.png",
+    apple: "/Headerlogo.png",
+  },
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en" style={{ background: "#fff6de" }}>
       <head>
-        <link rel="icon" href="/images/Headerlogo.png" />
+        <link rel="icon" href="/Headerlogo.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/Headerlogo.png" />
 
         {/* Critical inline CSS — sets background before first paint, prevents FOUC */}
         <style dangerouslySetInnerHTML={{ __html: `
