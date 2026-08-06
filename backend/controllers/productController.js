@@ -99,7 +99,10 @@ export const listProducts = async (req, res) => {
       } else {
         const collMatch = exactFieldMatch(collection);
         clauses.push({
-          $or: [{ collection: collMatch }, { collections: collMatch }],
+          $or: [
+            { collection: collMatch },
+            { collections: { $elemMatch: collMatch } },
+          ],
         });
       }
     }
