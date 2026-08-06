@@ -6,6 +6,8 @@ import {
   searchProducts,
   uploadProductJson,
   getProductById,
+  getProductBySlug,
+  generateSlugsForExisting,
   updateProduct,
   deleteProduct,
   bulkUploadProducts,
@@ -39,6 +41,12 @@ router.get("/search", searchProducts);
 
 // Get products by submenu (must be before /:id route)
 router.get("/by-submenu", getProductsBySubmenu);
+
+// Get product by slug (must be before /:id route)
+router.get("/slug/:slug", getProductBySlug);
+
+// One-time migration: generate slugs for existing products
+router.post("/generate-slugs", generateSlugsForExisting);
 
 // List products (with optional filtering: ?collection=Gold&category=Rings&subcategory=Gold Rings)
 router.get("/", listProducts);

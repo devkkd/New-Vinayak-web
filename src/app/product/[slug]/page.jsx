@@ -29,7 +29,9 @@ export default function ProductDetailPage() {
     async function fetchProduct() {
       setLoading(true);
       setNotFound(false);
-      const res = await getProductByIdApi(slug);
+      // slug in URL is the MongoDB _id — fetch directly
+      const id = decodeURIComponent(slug);
+      const res = await getProductByIdApi(id);
       if (cancelled) return;
       if (res?.success && res.data) {
         setProduct(res.data);

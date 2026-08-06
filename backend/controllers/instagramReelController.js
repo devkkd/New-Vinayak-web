@@ -82,6 +82,7 @@ export const addReel = async (req, res) => {
       videoPublicId: videoResult.key,
       thumbnailUrl,
       thumbnailPublicId,
+      reelLink: req.body?.reelLink?.trim() || "",
     });
 
     return res.status(201).json({ success: true, data: reel });
@@ -115,6 +116,7 @@ export const updateReel = async (req, res) => {
     }
 
     if (isActive !== undefined) reel.isActive = isActive === "true" || isActive === true;
+    if (req.body?.reelLink !== undefined) reel.reelLink = req.body.reelLink.trim();
     await reel.save();
     return res.json({ success: true, data: reel });
   } catch (e) {

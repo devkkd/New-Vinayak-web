@@ -175,20 +175,57 @@ export const getProductById = async (req, res) => {
     const { id } = req.params;
     let product = null;
 
-    // Try MongoDB _id first (24-char hex), else fall back to SKU lookup
+    // 1. Try MongoDB _id (24-char hex)
     const isObjectId = /^[a-f\d]{24}$/i.test(id);
     if (isObjectId) {
       product = await Product.findById(id);
     }
-    // If not found by _id (or id is not an ObjectId), try SKU
+    // 2. Try slug
+    if (!product) {
+      product = await Product.findOne({ slug: id });
+    }
+    // 3. Try exact SKU
     if (!product) {
       product = await Product.findOne({ sku: id });
+    }
+    // 4. Try case-insensitive SKU (handles partial matches like "109" vs "T 109")
+    if (!product) {
+      product = await Product.findOne({ sku: { $regex: new RegExp(`^${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } });
     }
 
     if (!product) return res.status(404).json({ success: false, message: "Product not found" });
     return res.json({ success: true, data: product });
   } catch (err) {
     return res.status(400).json({ success: false, message: "Invalid id", error: err.message });
+  }
+};
+
+// GET /api/products/slug/:slug — fetch product by slug
+export const getProductBySlug = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const product = await Product.findOne({ slug });
+    if (!product) return res.status(404).json({ success: false, message: "Product not found" });
+    return res.json({ success: true, data: product });
+  } catch (err) {
+    return res.status(400).json({ success: false, message: "Invalid slug", error: err.message });
+  }
+};
+
+// POST /api/products/generate-slugs — one-time migration to add slugs to existing products
+export const generateSlugsForExisting = async (req, res) => {
+  try {
+    const products = await Product.find({ slug: { $in: [null, undefined, ""] } });
+    let updated = 0;
+    for (const p of products) {
+      // trigger pre-save hook to generate slug
+      p.markModified("productName");
+      await p.save();
+      updated++;
+    }
+    return res.json({ success: true, message: `✅ Generated slugs for ${updated} products` });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Migration failed", error: err.message });
   }
 };
 

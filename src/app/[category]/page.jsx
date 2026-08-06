@@ -249,7 +249,8 @@ export default function CategoryPage() {
   const getId = (p) => p._id || p.id;
   const getImg = (p) => (p.images?.length > 0 ? p.images[0] : p.image) || "/home/logo.png";
   const getTitle = (p) => p.productName || p.title || "";
-  const getHref = (p) => `/product/${p.sku || p.slug || p._id}`;
+  // Use _id for URL — clean, no spaces, always unique
+  const getHref = (p) => `/product/${p._id || p.id}`;
 
   // ─── product list to render ──────────────────────────────
   const isLoading = isCollections ? loading : nonColLoading;

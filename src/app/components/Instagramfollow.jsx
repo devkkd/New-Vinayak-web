@@ -39,6 +39,7 @@ export default function InstagramFollow() {
               id: reel._id,
               video: reel.videoUrl,
               poster: reel.thumbnailUrl || undefined,
+              reelLink: reel.reelLink || `https://www.instagram.com/${INSTAGRAM_HANDLE}/`,
             }))
           );
         } else {
@@ -151,7 +152,14 @@ export default function InstagramFollow() {
 
             <div className="ig-track" ref={trackRef}>
               {items.map((item) => (
-                <div className="ig-card" key={item.id}>
+                <a
+                  key={item.id}
+                  className="ig-card"
+                  href={item.reelLink || `https://www.instagram.com/${INSTAGRAM_HANDLE}/`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="View on Instagram"
+                >
                   {!erroredMap[item.id] ? (
                     <video
                       className="ig-card-video"
@@ -164,7 +172,10 @@ export default function InstagramFollow() {
                       onError={() => handleVideoError(item.id)}
                     />
                   ) : null}
-                </div>
+                  <div className="ig-card-overlay">
+                    <FaInstagram className="ig-card-overlay-icon" />
+                  </div>
+                </a>
               ))}
             </div>
 
@@ -304,6 +315,8 @@ export default function InstagramFollow() {
           overflow: hidden;
           background: #000;
           scroll-snap-align: start;
+          text-decoration: none;
+          cursor: pointer;
         }
 
         .ig-card-video {
@@ -311,6 +324,34 @@ export default function InstagramFollow() {
           height: 100%;
           object-fit: cover;
           display: block;
+        }
+
+        /* Instagram hover overlay */
+        .ig-card-overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(0, 0, 0, 0);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: background 0.25s ease;
+        }
+
+        .ig-card-overlay-icon {
+          color: #fff;
+          font-size: 40px;
+          opacity: 0;
+          transform: scale(0.8);
+          transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+
+        .ig-card:hover .ig-card-overlay {
+          background: rgba(0, 0, 0, 0.45);
+        }
+
+        .ig-card:hover .ig-card-overlay-icon {
+          opacity: 1;
+          transform: scale(1);
         }
 
         /* ---------- Arrows ---------- */

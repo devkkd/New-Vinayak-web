@@ -281,6 +281,14 @@ export async function getProductByIdApi(id) {
   return { success: false, data: null };
 }
 
+export async function getProductBySlugApi(slug) {
+  try {
+    const res = await apiCall(`/api/products/slug/${encodeURIComponent(slug)}`);
+    if (res.ok) return await res.json();
+  } catch (_) {}
+  return { success: false, data: null };
+}
+
 export async function createProductJsonApi(productData) {
   try {
     const token = getAdminToken();
