@@ -38,7 +38,7 @@ export default function AdminLogin({ onLoginSuccess }) {
       if (res.success) {
         setSuccessMsg("Authentication successful! Redirecting...");
         setTimeout(() => {
-          if (onLoginSuccess) onLoginSuccess(res.user);
+          if (onLoginSuccess) onLoginSuccess(res.user, res.token);
         }, 800);
       } else {
         setError(res.message || "Invalid credentials or unauthorized access.");

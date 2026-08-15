@@ -2,10 +2,10 @@ import "./globals.css";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import PageLoader from "./components/PageLoader";
-import Script from "next/script";
+import TidioChat from "./components/TidioChat";
 
 export const metadata = {
-  title: "Vinayak Jewellery",
+  title: "Vinayak Jewellers",
   description: "Premium Jewellery Shop",
   icons: {
     icon: "/Headerlogo.png",
@@ -65,10 +65,7 @@ export default function RootLayout({ children }) {
         {children}
         <Footer />
 
-        <Script
-          src="//code.tidio.co/4c9jove3ahjr9moev5get2yiofmnzfxt.js"
-          strategy="afterInteractive"
-        />
+        <TidioChat />
       </body>
     </html>
   );

@@ -56,11 +56,15 @@ export default function CategoryPage() {
   // Subcategory pills derived from fetched products
   const [dynamicSubCats, setDynamicSubCats] = useState([]);
 
-  // ─── non-collections: fetch from API ─────────────────────
+  // ─── reset pill filter when page/collection changes ──────
+  useEffect(() => {
+    setActiveFilter("All");
+    setDynamicSubCats([]);
+    setStaticProducts([]);
+  }, [category]);
   useEffect(() => {
     if (isCollections) return;
     if (!collectionName) {
-      // birth-stones or unknown — no API fetch, show empty
       setStaticProducts([]);
       setNonColLoading(false);
       return;
@@ -70,15 +74,43 @@ export default function CategoryPage() {
       setNonColLoading(true);
       setNonColError(null);
       try {
-        const res = await listProductsApi({ collection: collectionName });
+        // Fetch products AND DB categories together — same as collections page
+        const [prodRes, catRes] = await Promise.all([
+          listProductsApi({ collection: collectionName }),
+          listCategoriesGroupedApi(),
+        ]);
         if (cancelled) return;
-        if (res?.success) {
-          const prods = res.data || [];
+
+        if (prodRes?.success) {
+          const prods = prodRes.data || [];
           setStaticProducts(prods);
-          // Derive unique subcategories from actual products
-          const subCatSet = new Set();
-          prods.forEach((p) => { if (p.subcategory) subCatSet.add(p.subcategory); });
-          setDynamicSubCats([...subCatSet]);
+
+          // Build subcategory pills from DB categories for this collection
+          const grouped = catRes?.success ? (catRes.data || {}) : {};
+          const dbCats = grouped[collectionName] || [];
+          const subSet = new Set();
+
+          if (dbCats.length > 0) {
+            dbCats.forEach((cat) => {
+              // Add category.category if any product has that subcategory or category
+              if (prods.some((p) => p.subcategory === cat.category || p.category === cat.category)) {
+                subSet.add(cat.category);
+              }
+              // Add each subcategory entry if at least one product matches
+              (cat.subcategories || []).forEach((sub) => {
+                if (prods.some((p) => p.subcategory === sub)) {
+                  subSet.add(sub);
+                }
+              });
+            });
+          }
+
+          // Fallback: derive directly from product.subcategory field
+          if (subSet.size === 0) {
+            prods.forEach((p) => { if (p.subcategory) subSet.add(p.subcategory); });
+          }
+
+          setDynamicSubCats([...subSet]);
         } else {
           setNonColError("failed");
         }
@@ -208,10 +240,12 @@ export default function CategoryPage() {
   // ─── non-collections: filtered products ───────────────────
   const filteredStatic = useMemo(() => {
     if (activeFilter === "All") return staticProducts;
-    // API products use `subcategory` field
-    return staticProducts.filter(
-      (p) => (p.subcategory || p.subCategory) === activeFilter
-    );
+    // Match against subcategory first, then category as fallback
+    return staticProducts.filter((p) => {
+      const sub = p.subcategory || p.subCategory || "";
+      const cat = p.category || "";
+      return sub === activeFilter || cat === activeFilter;
+    });
   }, [activeFilter, staticProducts]);
 
   // ─── retry handler ────────────────────────────────────────
@@ -257,30 +291,32 @@ export default function CategoryPage() {
   const hasError = isCollections ? !!error : !!nonColError;
   const displayProducts = isCollections ? products : filteredStatic;
 
-  // ─── group products by subcategory for header layout ─────
-  // Used on collections page when NO subcategory filter is active
-  const groupedBySubcategory = useMemo(() => {
-    // Show flat grid when: not collections, subcategory filter active, or category selected
-    if (!isCollections || activeSubcategory || activeCategory) return null;
+  // ─── Desired collection display order for "All Jewellery" ──
+  const COLLECTION_ORDER = ["Gold", "Diamond", "Silver", "Mens", "Coins", "Gifting", "Birth Stones", "Wedding Collection"];
+
+  // ─── group products by COLLECTION for "All Jewellery" view ──
+  // Used on collections page when NO collection/category/subcategory filter is active
+  const groupedByCollection = useMemo(() => {
+    if (!isCollections || activeCollection || activeSubcategory || activeCategory) return null;
     if (displayProducts.length === 0) return null;
 
     const grouped = {};
-    const order = [];
     displayProducts.forEach((p) => {
-      const key = p.subcategory || p.subCategory || "Uncategorised";
-      if (!grouped[key]) { grouped[key] = []; order.push(key); }
+      const key = p.collection || "Other";
+      if (!grouped[key]) grouped[key] = [];
       grouped[key].push(p);
     });
-    // Only group if there are multiple distinct subcategories
+
+    // Sort by defined order, then alphabetical for any extras
+    const order = [
+      ...COLLECTION_ORDER.filter((c) => grouped[c]),
+      ...Object.keys(grouped).filter((c) => !COLLECTION_ORDER.includes(c) && c !== "Other"),
+      ...(grouped["Other"] ? ["Other"] : []),
+    ];
+
     if (order.length <= 1) return null;
-    // Sort: put "Uncategorised" last
-    order.sort((a, b) => {
-      if (a === "Uncategorised") return 1;
-      if (b === "Uncategorised") return -1;
-      return a.localeCompare(b);
-    });
     return { grouped, order };
-  }, [isCollections, activeSubcategory, activeCategory, displayProducts]);
+  }, [isCollections, activeCollection, activeSubcategory, activeCategory, displayProducts]);
 
   return (
     <main className="cat-root">
@@ -410,12 +446,24 @@ export default function CategoryPage() {
                 <button className="cat-retry-btn" onClick={() => {
                   setNonColError(null);
                   setNonColLoading(true);
-                  listProductsApi({ collection: collectionName }).then((res) => {
-                    if (res?.success) {
-                      setStaticProducts(res.data || []);
-                      const subCatSet = new Set();
-                      (res.data || []).forEach((p) => { if (p.subcategory) subCatSet.add(p.subcategory); });
-                      setDynamicSubCats([...subCatSet]);
+                  Promise.all([
+                    listProductsApi({ collection: collectionName }),
+                    listCategoriesGroupedApi(),
+                  ]).then(([prodRes, catRes]) => {
+                    if (prodRes?.success) {
+                      const prods = prodRes.data || [];
+                      setStaticProducts(prods);
+                      const grouped = catRes?.success ? (catRes.data || {}) : {};
+                      const dbCats = grouped[collectionName] || [];
+                      const subSet = new Set();
+                      if (dbCats.length > 0) {
+                        dbCats.forEach((cat) => {
+                          if (prods.some((p) => p.subcategory === cat.category || p.category === cat.category)) subSet.add(cat.category);
+                          (cat.subcategories || []).forEach((sub) => { if (prods.some((p) => p.subcategory === sub)) subSet.add(sub); });
+                        });
+                      }
+                      if (subSet.size === 0) prods.forEach((p) => { if (p.subcategory) subSet.add(p.subcategory); });
+                      setDynamicSubCats([...subSet]);
                     } else { setNonColError("failed"); }
                     setNonColLoading(false);
                   }).catch(() => { setNonColError("failed"); setNonColLoading(false); });
@@ -448,80 +496,74 @@ export default function CategoryPage() {
               <>
                 {displayProducts.length === 0 ? (
                   <p className="cat-no-products">No products found for this filter.</p>
-                ) : groupedBySubcategory ? (
-                  /* ── Grouped by subcategory with section headers ── */
+                ) : groupedByCollection ? (
+                  /* ── Grouped by COLLECTION: Gold → Diamond → Silver → ... ── */
                   <div className="cat-sections">
-                    {groupedBySubcategory.order.map((subcat) => (
-                      <div key={subcat} className="cat-section">
-                        {/* Subcategory section header */}
-                        <div className="cat-section-header">
-                          <div className="cat-section-header-left">
-                            <span className="cat-section-eyebrow">Collection</span>
-                            <button
-                              className="cat-section-title-btn"
-                              onClick={() => handleSubcategorySelect(subcat)}
-                            >
-                              {subcat}
-                            </button>
-                          </div>
-                          <div className="cat-section-header-right">
-                            <span className="cat-section-count">
-                              {groupedBySubcategory.grouped[subcat].length} items
-                            </span>
-                            <button
-                              className="cat-section-view-all"
-                              onClick={() => handleSubcategorySelect(subcat)}
-                            >
-                              View All →
-                            </button>
-                          </div>
-                        </div>
-                        {/* Products row for this subcategory */}
-                        <div className={`cat-grid ${isCollections ? "cat-grid-4" : ""}`}>
-                          {groupedBySubcategory.grouped[subcat].map((p) => (
-                            <div className="cat-card" key={getId(p)}>
-                              <Link href={getHref(p)}>
-                                <div className="cat-card-imgwrap">
-                                  <img
-                                    src={getImg(p)}
-                                    alt={getTitle(p)}
-                                    loading="lazy"
-                                    decoding="async"
-                                    className="cat-card-img"
-                                    onError={(e) => { e.currentTarget.src = "/home/logo.png"; }}
-                                  />
-                                </div>
-                              </Link>
-                              <div className="cat-card-body">
-                                <Link href={getHref(p)}>
-                                  <p className="cat-card-title">{getTitle(p)}</p>
-                                </Link>
-                                <button
-                                  className="cat-card-btn"
-                                  onClick={() => openPopup(p)}
-                                >
-                                  {enquiryCart.some((item) => (item._id || item.id) === getId(p))
-                                    ? "Added ✓"
-                                    : "Enquiry Now →"}
-                                </button>
-                              </div>
+                    {groupedByCollection.order.map((collectionKey) => {
+                      const sectionProds = groupedByCollection.grouped[collectionKey];
+                      return (
+                        <div key={collectionKey} className="cat-section">
+                          <div className="cat-section-header">
+                            <div className="cat-section-header-left">
+                              <span className="cat-section-eyebrow">Collection</span>
+                              <button
+                                className="cat-section-title-btn"
+                                onClick={() => handleCollectionSelect(collectionKey)}
+                              >
+                                {collectionKey}
+                              </button>
                             </div>
-                          ))}
+                            <div className="cat-section-header-right">
+                              <span className="cat-section-count">{sectionProds.length} items</span>
+                              <button
+                                className="cat-section-view-all"
+                                onClick={() => handleCollectionSelect(collectionKey)}
+                              >
+                                View All →
+                              </button>
+                            </div>
+                          </div>
+                          <div className="cat-grid cat-grid-4">
+                            {sectionProds.slice(0, 4).map((p, idx) => (
+                              <div className="cat-card" key={getId(p)}>
+                                <Link href={getHref(p)}>
+                                  <div className="cat-card-imgwrap">
+                                    <img
+                                      src={getImg(p)}
+                                      alt={getTitle(p)}
+                                      loading={idx === 0 ? "eager" : "lazy"}
+                                      decoding="async"
+                                      className="cat-card-img"
+                                      onError={(e) => { e.currentTarget.src = "/home/logo.png"; }}
+                                    />
+                                  </div>
+                                </Link>
+                                <div className="cat-card-body">
+                                  <Link href={getHref(p)}>
+                                    <p className="cat-card-title">{getTitle(p)}</p>
+                                  </Link>
+                                  <button className="cat-card-btn" onClick={() => openPopup(p)}>
+                                    {enquiryCart.some((item) => (item._id || item.id) === getId(p)) ? "Added ✓" : "Enquiry Now →"}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
-                  /* ── Flat grid (subcategory filter active or non-collections) ── */
+                  /* ── Flat grid (collection/category/subcategory filter active or non-collections) ── */
                   <div className={`cat-grid ${isCollections ? "cat-grid-4" : ""}`}>
-                    {displayProducts.map((p) => (
+                    {displayProducts.map((p, idx) => (
                       <div className="cat-card" key={getId(p)}>
                         <Link href={getHref(p)}>
                           <div className="cat-card-imgwrap">
                             <img
                               src={getImg(p)}
                               alt={getTitle(p)}
-                              loading="lazy"
+                              loading={idx < 8 ? "eager" : "lazy"}
                               decoding="async"
                               className="cat-card-img"
                               onError={(e) => { e.currentTarget.src = "/home/logo.png"; }}
@@ -532,13 +574,8 @@ export default function CategoryPage() {
                           <Link href={getHref(p)}>
                             <p className="cat-card-title">{getTitle(p)}</p>
                           </Link>
-                          <button
-                            className="cat-card-btn"
-                            onClick={() => openPopup(p)}
-                          >
-                            {enquiryCart.some((item) => (item._id || item.id) === getId(p))
-                              ? "Added ✓"
-                              : "Enquiry Now →"}
+                          <button className="cat-card-btn" onClick={() => openPopup(p)}>
+                            {enquiryCart.some((item) => (item._id || item.id) === getId(p)) ? "Added ✓" : "Enquiry Now →"}
                           </button>
                         </div>
                       </div>

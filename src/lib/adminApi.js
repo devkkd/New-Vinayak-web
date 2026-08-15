@@ -1,11 +1,17 @@
-// API Base URL — single source, no fallback loop that causes 30s waits
+// API Base URL — set NEXT_PUBLIC_API_URL in your .env.local to point to your backend
+// In production (deployed), it falls back to the production Render URL
+// In local dev WITHOUT .env.local set, it uses localhost:5000 (no data if backend isn't running)
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "http://localhost:5000"
-    : "https://vinayak-jewellers-1.onrender.com");
+  (typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "https://vinayak-jewellers-1.onrender.com"
+    : "http://localhost:5000");
 
-export const PROD_API_URL = "https://vinayak-jewellers-1.onrender.com";
+// Production URL — only used for cross-origin fallback in deployed environments, NOT in local dev
+export const PROD_API_URL =
+  typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "https://vinayak-jewellers-1.onrender.com"
+    : API_BASE_URL;
 
 // Fast fetch helper with configurable timeout
 async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {

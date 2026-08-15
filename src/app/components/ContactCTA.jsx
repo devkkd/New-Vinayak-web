@@ -8,12 +8,10 @@ export default function ContactCTA() {
 
   function handleSubmit(e) {
     e.preventDefault();
+    if (!name.trim() || !mobile.trim()) return;
 
-    // API call yahan kar sakte ho
-    console.log({
-      name,
-      mobile,
-    });
+    const msg = `Hi, I'm looking for jewellery at Vinayak Jewellers.%0A%0AName: ${encodeURIComponent(name.trim())}%0AMobile: ${encodeURIComponent(mobile.trim())}%0A%0APlease help me find the perfect piece.`;
+    window.open(`https://wa.me/919414156451?text=${msg}`, "_blank");
   }
 
   return (
@@ -48,9 +46,8 @@ export default function ContactCTA() {
                   className="vj-input"
                   placeholder="Enter Your Name"
                   value={name}
-                  onChange={(e) =>
-                    setName(e.target.value)
-                  }
+                  onChange={(e) => setName(e.target.value)}
+                  required
                 />
               </div>
 
@@ -64,9 +61,8 @@ export default function ContactCTA() {
                   className="vj-input"
                   placeholder="Enter Your Mobile/WhatsApp Number"
                   value={mobile}
-                  onChange={(e) =>
-                    setMobile(e.target.value)
-                  }
+                  onChange={(e) => setMobile(e.target.value)}
+                  required
                 />
               </div>
 
