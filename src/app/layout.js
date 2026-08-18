@@ -6,10 +6,10 @@ import TidioChat from "./components/TidioChat";
 
 export const metadata = {
   title: "Vinayak Jewellers",
-  description: "Premium Jewellery Shop",
+  description: "Vinayak Jewellers – Premium Gold, Diamond & Silver Jewellery Shop in Jaipur. Visit us at Vidyadhar Nagar, Jaipur.",
   icons: {
-    icon: "/Headerlogo.png",
-    apple: "/Headerlogo.png",
+    icon: "/favicon.png",
+    apple: "/favicon.png",
   },
 };
 
@@ -17,8 +17,8 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" style={{ background: "#fff6de" }}>
       <head>
-        <link rel="icon" href="/Headerlogo.png" type="image/png" />
-        <link rel="apple-touch-icon" href="/Headerlogo.png" />
+        <link rel="icon" href="/favicon.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/favicon.png" />
 
         {/* Critical inline CSS — sets background before first paint, prevents FOUC */}
         <style dangerouslySetInnerHTML={{ __html: `
