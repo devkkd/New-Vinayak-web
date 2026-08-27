@@ -101,7 +101,7 @@ export const listProducts = async (req, res) => {
         clauses.push({
           $or: [
             { collection: collMatch },
-            { collections: { $elemMatch: collMatch } },
+            { collections: collMatch },
           ],
         });
       }
