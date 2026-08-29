@@ -38,11 +38,16 @@ export const uploadProduct = async (req, res) => {
     // Parse extra collections
     let parsedCollections = [];
     if (extraCollections !== undefined) {
-      parsedCollections = Array.isArray(extraCollections)
-        ? extraCollections
-        : typeof extraCollections === "string"
-          ? (() => { try { return JSON.parse(extraCollections); } catch { return [extraCollections]; } })()
-          : [];
+      try {
+        if (Array.isArray(extraCollections)) {
+          parsedCollections = extraCollections;
+        } else if (typeof extraCollections === "string" && extraCollections.trim() !== "") {
+          const trimmed = extraCollections.trim();
+          parsedCollections = trimmed.startsWith("[") ? JSON.parse(trimmed) : [trimmed];
+        }
+      } catch {
+        parsedCollections = [extraCollections].filter(Boolean);
+      }
     }
     const draft = {
       productName,
@@ -261,12 +266,23 @@ export const updateProduct = async (req, res) => {
     if (collection !== undefined) product.collection = collection?.trim() || undefined;
     // Handle extra collections array from frontend (multi-collection support)
     if (extraCollections !== undefined) {
-      const parsed = Array.isArray(extraCollections)
-        ? extraCollections
-        : typeof extraCollections === "string"
-          ? JSON.parse(extraCollections)
-          : [];
-      product.collections = parsed.filter(Boolean).map(c => c.trim());
+      let parsed = [];
+      try {
+        if (Array.isArray(extraCollections)) {
+          parsed = extraCollections;
+        } else if (typeof extraCollections === "string" && extraCollections.trim() !== "") {
+          const trimmed = extraCollections.trim();
+          // Could be a JSON array string like '["Silver","Mens"]' or a single value
+          if (trimmed.startsWith("[")) {
+            parsed = JSON.parse(trimmed);
+          } else {
+            parsed = [trimmed];
+          }
+        }
+      } catch {
+        parsed = Array.isArray(extraCollections) ? extraCollections : [extraCollections].filter(Boolean);
+      }
+      product.collections = parsed.filter(Boolean).map(c => String(c).trim());
     }
     if (category !== undefined || subcategory !== undefined) {
       const tax = normalizeTaxonomy({
