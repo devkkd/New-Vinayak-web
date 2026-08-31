@@ -338,7 +338,7 @@ export default function Header() {
       setSearchLoading(true);
       try {
         // Search products via API
-        const endpoints = [`${API_BASE_URL}/api/products/search?q=${encodeURIComponent(val)}`, `https://vinayak-jewellers-1.onrender.com/api/products/search?q=${encodeURIComponent(val)}`];
+        const endpoints = [`${API_BASE_URL}/api/products/search?q=${encodeURIComponent(val)}`, `https://vinayakjewellersjaipur.com/api/products/search?q=${encodeURIComponent(val)}`];
         let products = [];
         for (const url of [...new Set(endpoints)]) {
           try {

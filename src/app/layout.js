@@ -49,8 +49,8 @@ export default function RootLayout({ children }) {
         />
 
         {/* Backend preconnect */}
-        <link rel="preconnect" href="https://vinayak-jewellers-1.onrender.com" crossOrigin="" />
-        <link rel="dns-prefetch" href="https://vinayak-jewellers-1.onrender.com" />
+        <link rel="preconnect" href="https://vinayakjewellersjaipur.com" crossOrigin="" />
+        <link rel="dns-prefetch" href="https://vinayakjewellersjaipur.com" />
 
         {/* Preload hero images */}
         <link rel="preload" as="image" href="/home/hero1.png" />

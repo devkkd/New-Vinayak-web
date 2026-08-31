@@ -38,7 +38,7 @@ export default function EnquiryCartPage() {
       // Submit one enquiry per product to backend
       const endpoints = [
         `${API_BASE_URL}/api/enquiries`,
-        `https://vinayak-jewellers-1.onrender.com/api/enquiries`,
+        `https://vinayakjewellersjaipur.com/api/enquiries`,
       ];
 
       for (const item of cart) {
