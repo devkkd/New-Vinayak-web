@@ -444,7 +444,7 @@ useEffect(() => {
                   {searchResults.products.map(p => {
                     const img = (p.images?.length > 0 ? p.images[0] : p.image) || "/home/logo.png";
                     const title = p.productName || p.title || "";
-                    const href = `/product/${p._id || p.id}`;
+                    const href = `/product/${p.slug || p._id || p.id}`;
                     return (
                       <Link key={p._id} href={href} className="hdr-sd-prodrow" onClick={clearSearch}>
                         <img src={img} alt={title} className="hdr-sd-prod-img" onError={e => { e.currentTarget.src="/home/logo.png"; }} />

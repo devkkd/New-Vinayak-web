@@ -75,8 +75,10 @@ export const uploadProduct = async (req, res) => {
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const exactFieldMatch = (value) => {
-  const trimmed = String(value || "").trim();
+const normalizeMatchValue = (value) => String(value || "").trim().replace(/[’']/g, "").replace(/\s+/g, " ").trim();
+
+export const exactFieldMatch = (value) => {
+  const trimmed = normalizeMatchValue(value);
   if (!trimmed) return null;
   const singular = trimmed.replace(/s$/i, "");
   const plural = trimmed.endsWith("s") ? trimmed : `${trimmed}s`;
@@ -84,6 +86,26 @@ const exactFieldMatch = (value) => {
     (v) => new RegExp(`^${escapeRegex(v)}$`, "i")
   );
   return { $in: patterns };
+};
+
+export const buildCollectionMatch = (value) => {
+  const normalized = normalizeMatchValue(value);
+  if (!normalized) return null;
+
+  const singular = normalized.replace(/s$/i, "");
+  const plural = normalized.endsWith("s") ? normalized : `${normalized}s`;
+  const variants = [...new Set([normalized, singular, plural])].filter(Boolean);
+
+  if (variants.length === 0) return null;
+  return new RegExp(`^(?:${variants.map((v) => escapeRegex(v)).join("|")})$`, "i");
+};
+
+const normalizeCollectionList = (value) => {
+  if (!value) return [];
+  const raw = Array.isArray(value) ? value : [value];
+  return [...new Set(raw
+    .map((item) => String(item || "").trim())
+    .filter(Boolean))];
 };
 
 /** Category required for catalog; subcategory optional */
@@ -102,13 +124,15 @@ export const listProducts = async (req, res) => {
       if (collKey === "gifting" || collKey === "coins") {
         clauses.push(buildLinkedCollectionFilter(collection, exactFieldMatch));
       } else {
-        const collMatch = exactFieldMatch(collection);
-        clauses.push({
-          $or: [
-            { collection: collMatch },
-            { collections: collMatch },
-          ],
-        });
+        const collMatch = buildCollectionMatch(collection);
+        if (collMatch) {
+          clauses.push({
+            $or: [
+              { collection: collMatch },
+              { collections: collMatch },
+            ],
+          });
+        }
       }
     }
     if (category) clauses.push({ category: exactFieldMatch(category) });
@@ -131,7 +155,7 @@ export const listProducts = async (req, res) => {
     const filter =
       clauses.length === 0 ? {} : clauses.length === 1 ? clauses[0] : { $and: clauses };
     const products = await Product.find(filter)
-      .select("productName sku image images collection collections category subcategory details createdAt")
+      .select("productName slug sku image images collection collections category subcategory details createdAt")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -293,6 +317,8 @@ export const updateProduct = async (req, res) => {
       product.subcategory = tax.subcategory;
     }
     syncProductCollections(product);
+    product.markModified("collections");
+    product.markModified("collection");
     await product.save();
     return res.json({ success: true, message: "✅ Product updated", data: product });
   } catch (error) {
@@ -370,7 +396,7 @@ export const bulkUploadProducts = async (req, res) => {
 
 export const uploadProductJson = async (req, res) => {
   try {
-    let { productName, details, sku, imageUrl, imageBase64, mimeType, collection, category, subcategory } = req.body || {};
+    let { productName, details, sku, imageUrl, imageBase64, mimeType, collection, collections: extraCollections, category, subcategory } = req.body || {};
     if (productName) productName = productName.trim();
     if (details) details = details.trim();
     if (sku) sku = sku.trim();
@@ -386,11 +412,28 @@ export const uploadProductJson = async (req, res) => {
     }
     const result = await uploadToR2(buffer, mime);
     const tax = normalizeTaxonomy({ category, subcategory });
+
+    // Parse extra collections
+    let parsedCollections = [];
+    if (extraCollections !== undefined) {
+      try {
+        if (Array.isArray(extraCollections)) {
+          parsedCollections = extraCollections;
+        } else if (typeof extraCollections === "string" && extraCollections.trim() !== "") {
+          const trimmed = extraCollections.trim();
+          parsedCollections = trimmed.startsWith("[") ? JSON.parse(trimmed) : [trimmed];
+        }
+      } catch {
+        parsedCollections = [extraCollections].filter(Boolean);
+      }
+    }
+
     const draft = {
       productName,
       details,
       sku,
       collection: collection?.trim() || undefined,
+      collections: parsedCollections.filter(Boolean).map(c => c.trim()),
       category: tax.category,
       subcategory: tax.subcategory,
     };

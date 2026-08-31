@@ -103,7 +103,11 @@ export default function ProductsPage() {
       (p.productName || p.title || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.sku || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.category || "").toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesColl = filterCollection === "All" || p.collection === filterCollection;
+
+    const collectionKeys = [p.collection, ...(Array.isArray(p.collections) ? p.collections : [])]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    const matchesColl = filterCollection === "All" || collectionKeys.includes(filterCollection);
     return matchesSearch && matchesColl;
   });
 

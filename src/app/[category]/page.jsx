@@ -25,6 +25,17 @@ function cacheKey(params) {
   return JSON.stringify(params);
 }
 
+function getProductCollectionKeys(product) {
+  const keys = [
+    product?.collection,
+    ...(Array.isArray(product?.collections) ? product.collections : []),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  return [...new Set(keys)];
+}
+
 export default function CategoryPage() {
   const { category } = useParams();
   const meta = getCategory(category);
@@ -283,8 +294,8 @@ export default function CategoryPage() {
   const getId = (p) => p._id || p.id;
   const getImg = (p) => (p.images?.length > 0 ? p.images[0] : p.image) || "/home/logo.png";
   const getTitle = (p) => p.productName || p.title || "";
-  // Use _id for URL — clean, no spaces, always unique
-  const getHref = (p) => `/product/${p._id || p.id}`;
+  // Use slug for URL if available, otherwise _id — SEO friendly and clean
+  const getHref = (p) => `/product/${p.slug || p._id || p.id}`;
 
   // ─── product list to render ──────────────────────────────
   const isLoading = isCollections ? loading : nonColLoading;
@@ -302,9 +313,18 @@ export default function CategoryPage() {
 
     const grouped = {};
     displayProducts.forEach((p) => {
-      const key = p.collection || "Other";
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(p);
+      const keys = getProductCollectionKeys(p);
+      if (keys.length === 0) {
+        const key = "Other";
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(p);
+        return;
+      }
+
+      keys.forEach((key) => {
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(p);
+      });
     });
 
     // Sort by defined order, then alphabetical for any extras
