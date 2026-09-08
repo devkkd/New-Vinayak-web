@@ -149,7 +149,7 @@ export default function Footer() {
                 Enquire Now
               </Link>
 
-              <Link
+              {/* <Link
                 href="/admin"
                 className="ftr-admin-btn"
                 style={{
@@ -179,7 +179,7 @@ export default function Footer() {
                 }}
               >
                 Admin Login
-              </Link>
+              </Link> */}
             </div>
           </div>
         </div>
@@ -308,7 +308,7 @@ export default function Footer() {
             Enquire Now
           </Link>
 
-          <Link
+          {/* <Link
             href="/admin"
             style={{
               width: "100%",
@@ -336,7 +336,7 @@ export default function Footer() {
             }}
           >
             Admin Login
-          </Link>
+          </Link> */}
         </div>
 
         {/* Mobile Follow Us */}

@@ -620,7 +620,7 @@ export default function CategoryPage() {
               <img src={getImg(selectedProduct)} alt={getTitle(selectedProduct)} />
               <div>
                 <h3>{getTitle(selectedProduct)}</h3>
-                <p>Model #{getId(selectedProduct)}</p>
+                {/* <p>Model #{getId(selectedProduct)}</p> */}
               </div>
             </div>
 

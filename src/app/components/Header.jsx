@@ -5,7 +5,95 @@ import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { API_BASE_URL } from "@/lib/adminApi";
-import { categories as categoryRoutes } from "@/lib/data";
+import { categories as categoryRoutes, subCategoriesByCategory } from "@/lib/data";
+
+// Build a flat list: [{ name, categorySlug, categoryLabel }, ...] — deduped
+const ALL_SUBCATEGORIES = (() => {
+  const seen = new Set();
+  const list = [];
+  Object.entries(subCategoriesByCategory).forEach(([slug, subs]) => {
+    const parent = categoryRoutes.find(c => c.slug === slug);
+    if (!parent) return;
+    subs.forEach(sub => {
+      const key = `${slug}::${sub.toLowerCase()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      list.push({ name: sub, categorySlug: slug, categoryLabel: parent.heading || parent.label });
+    });
+  });
+  return list;
+})();
+
+/**
+ * Smart local matcher — understands multi-word queries like "gold ring" or "diamond bangles".
+ *
+ * Returns { matchedCats, matchedSubs, combinedHints }
+ *   combinedHints: [{ categoryLabel, categorySlug, subName }] — cross-word matches
+ *                  e.g. "gold ring" → { Gold Jewellery, gold, Ring }
+ */
+function smartLocalMatch(rawQuery) {
+  const q = rawQuery.toLowerCase().trim();
+  const tokens = q.split(/\s+/).filter(Boolean);
+
+  // ── simple single-token match ──────────────────────────────
+  const matchedCats = categoryRoutes.filter(c =>
+    c.label.toLowerCase().includes(q) ||
+    c.slug.toLowerCase().includes(q) ||
+    (c.heading || "").toLowerCase().includes(q)
+  );
+
+  const matchedSubs = ALL_SUBCATEGORIES.filter(s =>
+    s.name.toLowerCase().includes(q)
+  );
+
+  // ── multi-word cross matching ──────────────────────────────
+  // For each token, check if it's a category token or subcategory token
+  const catTokens = tokens.filter(t =>
+    categoryRoutes.some(c =>
+      c.label.toLowerCase().includes(t) ||
+      c.slug.toLowerCase().includes(t) ||
+      (c.heading || "").toLowerCase().includes(t)
+    )
+  );
+  const subTokens = tokens.filter(t =>
+    ALL_SUBCATEGORIES.some(s => s.name.toLowerCase().includes(t))
+  );
+
+  const combinedHints = [];
+  if (catTokens.length > 0 && subTokens.length > 0) {
+    // Find categories matched by catTokens
+    const catsFromTokens = categoryRoutes.filter(c =>
+      catTokens.some(t =>
+        c.label.toLowerCase().includes(t) ||
+        c.slug.toLowerCase().includes(t) ||
+        (c.heading || "").toLowerCase().includes(t)
+      )
+    );
+    // Find subcategories matched by subTokens
+    const subsFromTokens = ALL_SUBCATEGORIES.filter(s =>
+      subTokens.some(t => s.name.toLowerCase().includes(t))
+    );
+
+    // Cross-join: only show sub if it belongs to one of the matched cats
+    catsFromTokens.forEach(cat => {
+      subsFromTokens
+        .filter(s => s.categorySlug === cat.slug)
+        .forEach(s => {
+          combinedHints.push({
+            categoryLabel: cat.heading || cat.label,
+            categorySlug: cat.slug,
+            subName: s.name,
+          });
+        });
+    });
+  }
+
+  return {
+    matchedCats: matchedCats.slice(0, 3),
+    matchedSubs: matchedSubs.slice(0, 4),
+    combinedHints: combinedHints.slice(0, 5),
+  };
+}
 
 /* ----------------------------- ICONS ----------------------------- */
 
@@ -312,16 +400,20 @@ export default function Header() {
 
   // ── Search state ──
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState({ products: [], categories: [] });
+  const [searchResults, setSearchResults] = useState({ products: [], categories: [], subcategories: [], combinedHints: [] });
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const searchRef = useRef(null);
+  const mobileSearchRef = useRef(null);
   const debounceRef = useRef(null);
 
   // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e) {
       if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false);
+      }
+      if (mobileSearchRef.current && !mobileSearchRef.current.contains(e.target)) {
         setSearchOpen(false);
       }
     }
@@ -333,7 +425,7 @@ export default function Header() {
   const handleSearchChange = useCallback((val) => {
     setSearchQuery(val);
     clearTimeout(debounceRef.current);
-    if (!val.trim()) { setSearchResults({ products: [], categories: [] }); setSearchOpen(false); return; }
+    if (!val.trim()) { setSearchResults({ products: [], categories: [], subcategories: [], combinedHints: [] }); setSearchOpen(false); return; }
     debounceRef.current = setTimeout(async () => {
       setSearchLoading(true);
       try {
@@ -346,12 +438,9 @@ export default function Header() {
             if (res.ok) { const data = await res.json(); products = data.data || []; break; }
           } catch (_) {}
         }
-        // Match categories locally
-        const q = val.toLowerCase();
-        const matchedCats = categoryRoutes.filter(c =>
-          c.label.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q)
-        );
-        setSearchResults({ products: products.slice(0, 6), categories: matchedCats.slice(0, 4) });
+        // Smart local match — handles "gold ring", "diamond bangles", etc.
+        const { matchedCats, matchedSubs, combinedHints } = smartLocalMatch(val);
+        setSearchResults({ products: products.slice(0, 6), categories: matchedCats, subcategories: matchedSubs, combinedHints });
         setSearchOpen(true);
       } catch (_) {}
       setSearchLoading(false);
@@ -362,12 +451,13 @@ export default function Header() {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setSearchOpen(false);
-    router.push(`/collections?search=${encodeURIComponent(searchQuery.trim())}`);
+    setMobileSearchOpen(false);
+    router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
   }
 
   function clearSearch() {
     setSearchQuery("");
-    setSearchResults({ products: [], categories: [] });
+    setSearchResults({ products: [], categories: [], subcategories: [], combinedHints: [] });
     setSearchOpen(false);
   }
 
@@ -422,17 +512,47 @@ useEffect(() => {
           )}
 
           {/* Dropdown */}
-          {searchOpen && (searchResults.products.length > 0 || searchResults.categories.length > 0) && (
+          {searchOpen && (searchResults.products.length > 0 || searchResults.categories.length > 0 || searchResults.subcategories.length > 0 || searchResults.combinedHints.length > 0) && (
             <div className="hdr-search-dropdown">
               {searchLoading && <div className="hdr-sd-loading">Searching…</div>}
 
-              {searchResults.categories.length > 0 && (
+              {/* Combined hints — shown FIRST when query spans category + subcategory e.g. "gold ring" */}
+              {searchResults.combinedHints.length > 0 && (
+                <div className="hdr-sd-group">
+                  <p className="hdr-sd-label">Best Match</p>
+                  {searchResults.combinedHints.map(hint => (
+                    <Link key={`${hint.categorySlug}-${hint.subName}`} href={`/${hint.categorySlug}`} className="hdr-sd-catrow hdr-sd-combined" onClick={clearSearch}>
+                      <span className="hdr-sd-cat-icon">✦</span>
+                      <span className="hdr-sd-sub-name">{hint.subName}</span>
+                      <span className="hdr-sd-combined-sep">in</span>
+                      <span className="hdr-sd-combined-cat">{hint.categoryLabel}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {/* Plain category matches — only if no combined hints cover them already */}
+              {searchResults.categories.length > 0 && searchResults.combinedHints.length === 0 && (
                 <div className="hdr-sd-group">
                   <p className="hdr-sd-label">Categories</p>
                   {searchResults.categories.map(cat => (
                     <Link key={cat.slug} href={`/${cat.slug}`} className="hdr-sd-catrow" onClick={clearSearch}>
                       <span className="hdr-sd-cat-icon">🏷</span>
                       <span>{cat.heading || cat.label}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {/* Subcategory matches — only if no combined hints */}
+              {searchResults.subcategories.length > 0 && searchResults.combinedHints.length === 0 && (
+                <div className="hdr-sd-group">
+                  <p className="hdr-sd-label">Subcategories</p>
+                  {searchResults.subcategories.map(sub => (
+                    <Link key={`${sub.categorySlug}-${sub.name}`} href={`/${sub.categorySlug}`} className="hdr-sd-catrow" onClick={clearSearch}>
+                      <span className="hdr-sd-cat-icon">◈</span>
+                      <span className="hdr-sd-sub-name">{sub.name}</span>
+                      <span className="hdr-sd-sub-parent">in {sub.categoryLabel}</span>
                     </Link>
                   ))}
                 </div>
@@ -575,20 +695,99 @@ useEffect(() => {
       </div>
 
       {mobileSearchOpen && (
-        <form className="hdr-mobile-search-row" onSubmit={handleSearchSubmit} autoComplete="off">
-          <IconSearch className="hdr-search-icon" />
-          <input
-            type="text"
-            placeholder="Search Gold, Diamond, Silver…"
-            className="hdr-search-input"
-            value={searchQuery}
-            onChange={e => handleSearchChange(e.target.value)}
-            autoFocus
-          />
-          {searchQuery && (
-            <button type="button" className="hdr-search-clear" onClick={clearSearch}>✕</button>
+        <div className="hdr-mobile-search-wrap" ref={mobileSearchRef}>
+          <form className="hdr-mobile-search-row" onSubmit={handleSearchSubmit} autoComplete="off">
+            <IconSearch className="hdr-search-icon" />
+            <input
+              type="text"
+              placeholder="Search Gold, Diamond, Silver…"
+              className="hdr-search-input"
+              value={searchQuery}
+              onChange={e => handleSearchChange(e.target.value)}
+              onFocus={() => searchQuery.trim() && setSearchOpen(true)}
+              autoFocus
+            />
+            {searchQuery && (
+              <button type="button" className="hdr-search-clear" onClick={clearSearch}>✕</button>
+            )}
+          </form>
+
+          {/* Mobile dropdown */}
+          {searchOpen && (searchResults.products.length > 0 || searchResults.categories.length > 0 || searchResults.subcategories.length > 0 || searchResults.combinedHints.length > 0) && (
+            <div className="hdr-search-dropdown hdr-mobile-dropdown">
+              {searchLoading && <div className="hdr-sd-loading">Searching…</div>}
+
+              {searchResults.combinedHints.length > 0 && (
+                <div className="hdr-sd-group">
+                  <p className="hdr-sd-label">Best Match</p>
+                  {searchResults.combinedHints.map(hint => (
+                    <Link key={`${hint.categorySlug}-${hint.subName}`} href={`/${hint.categorySlug}`} className="hdr-sd-catrow hdr-sd-combined" onClick={() => { clearSearch(); setMobileSearchOpen(false); }}>
+                      <span className="hdr-sd-cat-icon">✦</span>
+                      <span className="hdr-sd-sub-name">{hint.subName}</span>
+                      <span className="hdr-sd-combined-sep">in</span>
+                      <span className="hdr-sd-combined-cat">{hint.categoryLabel}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {searchResults.categories.length > 0 && searchResults.combinedHints.length === 0 && (
+                <div className="hdr-sd-group">
+                  <p className="hdr-sd-label">Categories</p>
+                  {searchResults.categories.map(cat => (
+                    <Link key={cat.slug} href={`/${cat.slug}`} className="hdr-sd-catrow" onClick={() => { clearSearch(); setMobileSearchOpen(false); }}>
+                      <span className="hdr-sd-cat-icon">🏷</span>
+                      <span>{cat.heading || cat.label}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {searchResults.subcategories.length > 0 && searchResults.combinedHints.length === 0 && (
+                <div className="hdr-sd-group">
+                  <p className="hdr-sd-label">Subcategories</p>
+                  {searchResults.subcategories.map(sub => (
+                    <Link key={`${sub.categorySlug}-${sub.name}`} href={`/${sub.categorySlug}`} className="hdr-sd-catrow" onClick={() => { clearSearch(); setMobileSearchOpen(false); }}>
+                      <span className="hdr-sd-cat-icon">◈</span>
+                      <span className="hdr-sd-sub-name">{sub.name}</span>
+                      <span className="hdr-sd-sub-parent">in {sub.categoryLabel}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {searchResults.products.length > 0 && (
+                <div className="hdr-sd-group">
+                  <p className="hdr-sd-label">Products</p>
+                  {searchResults.products.map(p => {
+                    const img = (p.images?.length > 0 ? p.images[0] : p.image) || "/home/logo.png";
+                    const title = p.productName || p.title || "";
+                    const href = `/product/${p.slug || p._id || p.id}`;
+                    return (
+                      <Link key={p._id} href={href} className="hdr-sd-prodrow" onClick={() => { clearSearch(); setMobileSearchOpen(false); }}>
+                        <img src={img} alt={title} className="hdr-sd-prod-img" onError={e => { e.currentTarget.src="/home/logo.png"; }} />
+                        <div className="hdr-sd-prod-info">
+                          <span className="hdr-sd-prod-name">{title}</span>
+                          {p.sku && <span className="hdr-sd-prod-sku">SKU: {p.sku}</span>}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+
+              <button type="button" className="hdr-sd-viewall" onClick={() => {
+                if (!searchQuery.trim()) return;
+                setSearchOpen(false);
+                setMobileSearchOpen(false);
+                router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+                clearSearch();
+              }}>
+                View all results for &ldquo;{searchQuery}&rdquo; →
+              </button>
+            </div>
           )}
-        </form>
+        </div>
       )}
 
       {/* ---------------- MOBILE DRAWER ---------------- */}
@@ -858,6 +1057,32 @@ useEffect(() => {
         }
         .hdr-sd-catrow:hover { background: #fff8ee; }
         .hdr-sd-cat-icon { font-size: 14px; }
+        .hdr-sd-sub-name { font-size: 13px; font-weight: 600; flex: 1; }
+        .hdr-sd-sub-parent {
+          font-size: 10px;
+          color: rgba(104,31,0,0.45);
+          font-style: italic;
+          white-space: nowrap;
+          margin-left: auto;
+          padding-left: 8px;
+        }
+        .hdr-sd-combined {
+          background: linear-gradient(90deg, #fffaf2, #fff8ee);
+          border-left: 3px solid #BF9555;
+        }
+        .hdr-sd-combined:hover { background: #fff4e0; }
+        .hdr-sd-combined-sep {
+          font-size: 10px;
+          color: rgba(104,31,0,0.4);
+          margin: 0 4px;
+          font-style: italic;
+        }
+        .hdr-sd-combined-cat {
+          font-size: 11px;
+          font-weight: 600;
+          color: #BF9555;
+          white-space: nowrap;
+        }
         .hdr-sd-prodrow {
           display: flex;
           align-items: center;
@@ -1054,15 +1279,28 @@ useEffect(() => {
         }
         .hdr-icon-btn-svg { width: 22px; height: 22px; }
 
-        .hdr-mobile-search-row {
+        .hdr-mobile-search-wrap {
           display: none;
+          flex-direction: column;
+          margin: 0 16px 12px;
+          position: relative;
+        }
+
+        .hdr-mobile-search-row {
+          display: flex;
           align-items: center;
           gap: 10px;
           background: var(--hdr-cream);
           border: 1px solid var(--hdr-border);
           border-radius: 999px;
           padding: 9px 14px;
-          margin: 0 16px 12px;
+        }
+
+        .hdr-mobile-dropdown {
+          position: static !important;
+          top: auto !important;
+          margin-top: 6px;
+          border-radius: 12px;
         }
 
         /* ---------- MOBILE DRAWER ---------- */
@@ -1158,6 +1396,7 @@ useEffect(() => {
         @media (max-width: 900px) {
           .hdr-topbar, .hdr-navbar { display: none; }
           .hdr-mobilebar { display: flex; }
+          .hdr-mobile-search-wrap.hdr-mobile-search-wrap { display: flex; }
           .hdr-mobile-search-row.hdr-mobile-search-row { display: flex; }
         }
       `}</style>
