@@ -54,7 +54,7 @@ export default function RootLayout({ children }) {
 
         {/* Preload hero images */}
         <link rel="preload" as="image" href="/home/hero1.png" />
-        <link rel="preload" as="image" href="/home/hero6.png" />
+        <link rel="preload" as="image" href="/home/hero6.png" media="(max-width: 768px)" />
       </head>
 
       <body style={{ background: "#fff6de", margin: 0, padding: 0 }}>

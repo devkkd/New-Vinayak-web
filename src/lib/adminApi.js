@@ -1,17 +1,21 @@
-// API Base URL — set NEXT_PUBLIC_API_URL in your .env.local to point to your backend
-// In production (deployed), it falls back to the production Render URL
-// In local dev WITHOUT .env.local set, it uses localhost:5000 (no data if backend isn't running)
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? `${window.location.origin}/api`
-    : "http://localhost:5000");
+// API URLs are backend roots; endpoint paths below provide the /api prefix.
+const PRODUCTION_API_URL = "https://vinayak-jewellers-1.onrender.com";
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL
+  ?.replace(/\/+$/, "")
+  .replace(/\/api$/, "");
+const isLocalHost =
+  typeof window !== "undefined" &&
+  ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const configuredApiIsFrontend =
+  typeof window !== "undefined" &&
+  configuredApiUrl === window.location.origin;
 
-// Production URL — only used for cross-origin fallback in deployed environments, NOT in local dev
-export const PROD_API_URL =
-  typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? `${window.location.origin}/api`
-    : API_BASE_URL;
+export const API_BASE_URL = configuredApiIsFrontend
+  ? PRODUCTION_API_URL
+  : configuredApiUrl || (isLocalHost ? "http://localhost:5000" : PRODUCTION_API_URL);
+
+// Production backend URL used for cross-origin fallback.
+export const PROD_API_URL = PRODUCTION_API_URL;
 
 // Fast fetch helper with configurable timeout
 async function fetchWithTimeout(url, options = {}, timeoutMs = 20000) {
